@@ -56,8 +56,9 @@ type UserAttribute struct {
 }
 
 type LoginRequest struct {
-	Username  string
-	Password  string
+	Username string
+	Password string
+	Token    string
 }
 
 type AuthenticationMethod func(*zap.SugaredLogger, User, LoginRequest) (*User, error)
