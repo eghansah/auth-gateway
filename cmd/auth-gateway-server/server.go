@@ -501,7 +501,6 @@ func (s *server) APILogin() http.HandlerFunc {
 			authenticatedUser.SID = xid.New().String()
 			authenticatedUser.Active = true
 			authenticatedUser.ExpiryDate = time.Now()
-			authenticatedUser.AuthenticationSystem = "ldap"
 
 			s.db.Create(&authenticatedUser)
 		}
@@ -515,7 +514,7 @@ func (s *server) APILogin() http.HandlerFunc {
 		sessionID := xid.New()
 		requestLogger = requestLogger.With("sid", sessionID)
 
-		requestLogger.Info("Saving session id: %s => %s", sessionID.String(), fmt.Sprintf("%d", authenticatedUser.ID))
+		requestLogger.Infof("Saving session id: %s => %s", sessionID.String(), fmt.Sprintf("%d", authenticatedUser.ID))
 		s.cache.Set(sessionID.String(), fmt.Sprintf("%d", authenticatedUser.ID), s.cfg.SessionDuration)
 
 		c := http.Cookie{
