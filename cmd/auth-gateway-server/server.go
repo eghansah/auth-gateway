@@ -490,8 +490,8 @@ func (s *server) APILogin() http.HandlerFunc {
 
 		authenticatedUser, err := s.authenticateUser(requestLogger, user, lr)
 		if err != nil {
-			requestLogger.Info("authenticateUser returned an error: %s")
-			errMsg := fmt.Errorf("Incorrect username or password")
+			requestLogger.Info("authenticateUser returned an error: %s", err)
+			errMsg := fmt.Errorf("incorrect username or password")
 			errorJSON(w, errMsg, http.StatusUnauthorized)
 			return
 		}
