@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <link
+      href="https://fonts.googleapis.com/css?family=Roboto:300,400&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="{{.STATIC_PATH}}fonts/icomoon/style.css" />
+
+    <link rel="stylesheet" href="{{.STATIC_PATH}}css/owl.carousel.min.css" />
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="{{.STATIC_PATH}}css/bootstrap.min.css" />
+
+    <!-- Style -->
+    <link rel="stylesheet" href="{{.STATIC_PATH}}css/style.css" />
+
+    <title>Login</title>
+  </head>
+  <body onload="onload()">
+    <div class="content">
+      <div class="container">
+        <div class="row">
+          <div class="col-md-6">
+            <img
+              src="{{.STATIC_PATH}}images/undraw_remotely_2j6y.svg"
+              alt="Image"
+              class="img-fluid"
+            />
+          </div>
+          <div class="col-md-6 contents">
+            <div class="row justify-content-center">
+              <div class="col-md-8">
+                <div class="mb-4">
+                  <h3>Sign In</h3>
+                </div>
+                <form
+                  enctype="application/x-www-form-urlencoded"
+                  action=""
+                  method="post"
+                >
+                  <div class="form-group first">
+                    <label for="username">Username</label>
+                    <input type="text" class="form-control" id="username" />
+                  </div>
+                  <div class="form-group mb-4">
+                    <label for="password">Password</label>
+                    <input type="password" class="form-control" id="password" />
+                  </div>
+                  <div class="form-group mb-4">
+                    <label for="password">Token</label>
+                    <input type="number" class="form-control" id="token" />
+                  </div>
+
+                  {{ .csrfField }}
+
+                  <input
+                    type="button"
+                    value="Log In"
+                    class="btn btn-block btn-primary"
+                    onclick="return login()"
+                  />
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="{{.STATIC_PATH}}js/jquery-3.3.1.min.js"></script>
+    <script src="{{.STATIC_PATH}}js/popper.min.js"></script>
+    <script src="{{.STATIC_PATH}}js/bootstrap.min.js"></script>
+    <script src="{{.STATIC_PATH}}js/main.js"></script>
+
+    <script type="text/javascript">
+      function onload() {
+        whoami_url = "{{ .API_WHOAMI_URL }}";
+        query_params = "{{.QUERY_PARAMS}}";
+        if (query_params != "") {
+          whoami_url = whoami_url + "?" + query_params;
+        }
+
+        $.ajax({
+          url: whoami_url,
+          type: "get",
+          data: {},
+          dataType: "json",
+          xhrFields: {
+            withCredentials: true,
+          },
+          crossDomain: true,
+          success: function (data) {
+            console.info(data);
+            if (data.email != "") {
+              if (data.redirect_to != "") {
+                window.location.href = data.redirect_to;
+              } else {
+                window.location.href = "{{.PROFILE_URL}}";
+              }
+            }
+          },
+        });
+      }
+
+      function login() {
+        login_url = "{{ .API_LOGIN_URL }}";
+        query_params = "{{.QUERY_PARAMS}}";
+        if (query_params != "") {
+          login_url = login_url + "?" + query_params;
+        }
+        $.ajax({
+          url: login_url,
+          type: "post",
+          data: {
+            username: $("#username").val(),
+            password: $("#password").val(),
+            token: $("#token").val(),
+            "gorilla.csrf.Token": $("input[name='gorilla.csrf.Token']").val(),
+          },
+          // headers: {
+          //   "Content-Type": "application/json",
+          //   "x-csrf-token": csrfToken,
+          // },
+          dataType: "json",
+          xhrFields: {
+            withCredentials: true,
+          },
+          crossDomain: true,
+          success: function (data) {
+            console.info(data);
+            if (
+              data.status === "redirect_internal" ||
+              data.status === "redirect_external"
+            ) {
+              window.location.href = data.redirect_to;
+            }
+          },
+        });
+      }
+    </script>
+  </body>
+</html>

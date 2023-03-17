@@ -1,0 +1,31 @@
+version: "3.9"
+services:
+  mariadb:
+    image: mariadb:10
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_DATABASE: auth
+      MARIADB_USER: admin
+      MARIADB_PASSWORD: password
+      MARIADB_ROOT_PASSWORD: password
+    volumes:
+      - ./services/mariadb/data:/var/lib/mysql
+  auth:
+    image: eghansah/auth:0.0.1
+    restart: always
+    ports:
+      - "7700:9000"
+    labels:
+        - traefik.http.routers.corporate.rule=Host(`localhost`) && PathPrefix(`/backends`)
+  traefik:
+      image: traefik:v2.4
+      ports:
+          - "80:80"
+      command:
+          - --providers.docker
+      volumes:
+          - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    
