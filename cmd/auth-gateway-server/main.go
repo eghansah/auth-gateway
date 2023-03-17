@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/eghansah/auth-gateway/authlib"
 	"github.com/eghansah/auth-gateway/cmd/auth-gateway-server/auth_methods"
 	"github.com/google/uuid"
 	"github.com/rs/xid"
@@ -56,7 +57,9 @@ func main() {
 		viper.BindEnv(k, k)
 	}
 
-	s := server{}
+	s := server{
+		supportedAuthenticationMethods: make(map[string]authlib.AuthenticationMethod),
+	}
 	cfg := config{}
 	err := viper.Unmarshal(&cfg)
 	if err != nil {
