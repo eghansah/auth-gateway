@@ -485,7 +485,8 @@ func (s *server) APILogin() http.HandlerFunc {
 
 		lr := authlib.LoginRequest{
 			Username: strings.ToLower(reqMap["username"]),
-			Password: strings.ToLower(reqMap["password"])}
+			Password: reqMap["password"],
+			Token:    reqMap["token"]}
 
 		authenticatedUser, err := s.authenticateUser(requestLogger, user, lr)
 		if err != nil {
