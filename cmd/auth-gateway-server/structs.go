@@ -68,11 +68,9 @@ type PasswordResetRequest struct {
 	Status    sql.NullString
 }
 
-
-
 func (s *server) GetUserGroups(username string) []string {
 	groups := make([]string, 1)
-	s.db.Model(UserGroup{}).Select("group").Where("username = ? and active=true", username).Find(&groups)
+	s.db.Model(UserGroup{}).Select("group").Where("user = ? and active=true", username).Find(&groups)
 
 	return groups
 }
