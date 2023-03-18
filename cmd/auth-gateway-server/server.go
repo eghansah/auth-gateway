@@ -507,6 +507,7 @@ func (s *server) APILogin() http.HandlerFunc {
 
 		//Fetch user roles
 		authenticatedUser.IAMRoles = s.GetUserPermissions(authenticatedUser.Email)
+		authenticatedUser.Attributes = map[string]string{}
 
 		//Login succesful. Let's generate session id
 		requestLogger.Info("Login succesful. Let's generate session id")
