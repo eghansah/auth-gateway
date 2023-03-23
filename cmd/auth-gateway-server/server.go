@@ -843,7 +843,7 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		}
 
 		qs := r.URL.Query()
-		requestLogger.Info("\n\nqs =>>>> %+v\n%s\n\n", qs, r.URL.Query())
+		requestLogger.Infof("\n\nqs =>>>> %+v\n%s\n\n", qs, r.URL.Query())
 		if redirectToUrl, ok := qs["next"]; ok {
 			jsResp.RedirectURL = redirectToUrl[0]
 		}
@@ -878,7 +878,9 @@ func (s *server) WhoAmI() http.HandlerFunc {
 					q.Set("tk", redirectToken)
 					redirectURLObj.RawQuery = q.Encode()
 					jsResp.RedirectURL = fmt.Sprint(redirectURLObj)
-					jsResp.Status = "reditect_external"
+					jsResp.Status = "redirect_external"
+
+					requestLogger.Infof("Redirect URL => %s\n", fmt.Sprint(redirectURLObj))
 				}
 			}
 		}
