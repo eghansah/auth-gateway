@@ -1,6 +1,7 @@
 package authlib
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,7 +15,12 @@ type JSONResponse struct {
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}, headers ...http.Header) error {
-	out, err := json.Marshal(data)
+
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+
+	err := enc.Encode(data)
 	if err != nil {
 		return err
 	}
@@ -27,7 +33,7 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}, headers ...h
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, err = w.Write(out)
+	_, err = w.Write(buf.Bytes())
 	if err != nil {
 		return err
 	}
