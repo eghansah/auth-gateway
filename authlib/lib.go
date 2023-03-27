@@ -182,7 +182,7 @@ func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 			URL: fmt.Sprintf("%s?service=%s&next=%s%s", s.loginPageURL, s.serviceID, os.Getenv("URL_PREFIX"), r.URL.Path),
 		}
 		resp := JSONResponse{
-			Error:   false,
+			Error:   true,
 			Message: "user not logged in",
 			Data:    redirectURL,
 		}
