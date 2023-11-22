@@ -26,21 +26,22 @@ func main() {
 	}
 
 	MANDATORY_ENV_VARS := []string{
-		"AUTH_HOST",
-		"AUTH_PORT",
-		"AUTH_URL_PREFIX",
-		"AUTH_REDIS_SERVER",
-		"AUTH_SESSION_EXPIRY",
-		"AUTH_CSRF_KEY",
-		"AUTH_ENABLE_OTP",
-		"AUTH_LDAP_DOMAIN",
-		"AUTH_LDAP_SERVER_IP",
-		"AUTH_DBHOST",
-		"AUTH_DBPORT",
-		"AUTH_DBUSER",
-		"AUTH_DBPASSWD",
-		"AUTH_DBNAME",
-		"AUTH_CORS_ORIGIN_WHITELIST",
+		// "AUTH_HOST",
+		// "AUTH_PORT",
+		// "AUTH_URL_PREFIX",
+		// "AUTH_REDIS_SERVER",
+		// "AUTH_SESSION_EXPIRY",
+		// "AUTH_CSRF_KEY",
+		// "AUTH_ENABLE_OTP",
+
+		// "AUTH_LDAP_DOMAIN",
+		// "AUTH_LDAP_SERVER_IP",
+		// "AUTH_DBHOST",
+		// "AUTH_DBPORT",
+		// "AUTH_DBUSER",
+		// "AUTH_DBPASSWD",
+		// "AUTH_DBNAME",
+		// "AUTH_CORS_ORIGIN_WHITELIST",
 	}
 
 	viper.AutomaticEnv()
@@ -60,7 +61,10 @@ func main() {
 	s := server{
 		supportedAuthenticationMethods: make(map[string]authlib.AuthenticationMethod),
 	}
-	cfg := config{}
+	cfg := config{
+		Host: "127.0.0.1",
+		Port: 9000,
+	}
 	err := viper.Unmarshal(&cfg)
 	if err != nil {
 		panic(err)

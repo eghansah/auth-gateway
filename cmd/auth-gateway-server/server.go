@@ -31,6 +31,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
@@ -53,6 +54,7 @@ type config struct {
 	DBUser                string        `mapstructure:"AUTH_DBUSER"`
 	DBPassword            string        `mapstructure:"AUTH_DBPASSWD"`
 	DBName                string        `mapstructure:"AUTH_DBNAME"`
+	DBType                string        `mapstructure:"AUTH_DB_TYPE"`
 	CORSWhiteList         string        `mapstructure:"AUTH_CORS_ORIGIN_WHITELIST"`
 	SubDirectory          string        `mapstructure:"AUTH_SUBDIRECTORY"`
 	LogLevel              string
@@ -223,14 +225,22 @@ func (s *server) Init(c config) {
 	)
 	go s.cache.Start() // starts automatic expired item deletion
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		s.cfg.DBUser, s.cfg.DBPassword, s.cfg.DBHost, s.cfg.DBPort, s.cfg.DBName)
-	// fmt.Println(dsn)
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		NamingStrategy: schema.NamingStrategy{
-			TablePrefix: "auth_",
-		},
-	})
+	var db *gorm.DB
+	var err error
+	switch strings.TrimSpace(strings.ToLower(s.cfg.DBType)) {
+	case "mysql":
+		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			s.cfg.DBUser, s.cfg.DBPassword, s.cfg.DBHost, s.cfg.DBPort, s.cfg.DBName)
+		// fmt.Println(dsn)
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+			NamingStrategy: schema.NamingStrategy{
+				TablePrefix: "auth_",
+			},
+		})
+
+	default:
+		db, err = gorm.Open(sqlite.Open("mdb.db"), &gorm.Config{})
+	}
 
 	if err != nil {
 		log.Fatalf("Unable to initialize db connection: %s\n", err.Error())
