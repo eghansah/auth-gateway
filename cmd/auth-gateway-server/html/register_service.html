@@ -1,0 +1,31 @@
+<html>
+  <body>
+    <form method="post">
+      <table>
+        <tr>
+          <td colspan="2"><center>{{.msg}}</center></td>
+        </tr>
+        <tr>
+          <td>Service ID</td>
+          <td><input name="sid" /></td>
+        </tr>
+        <tr>
+          <td>Domain</td>
+          <td><input name="domain" /></td>
+        </tr>
+        <tr>
+          <td>Login Redirect URL</td>
+          <td><input name="login_redirect_url" /></td>
+        </tr>
+        <tr>
+          <td>Callback URL</td>
+          <td><input name="callback" /></td>
+        </tr>
+        <tr>
+          <td>{{ .csrfField }}</td>
+          <td><input type="submit" /></td>
+        </tr>
+      </table>
+    </form>
+  </body>
+</html>
