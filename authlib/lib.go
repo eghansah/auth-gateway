@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/rs/xid"
+	"github.com/go-chi/chi/middleware"
+	"github.com/lafriks/ttlcache/v3"
 	"go.uber.org/zap"
 )
 
@@ -25,14 +25,14 @@ type AuthGateway struct {
 	Handlers    Handlers
 	// whoAmIURL string
 	logger *zap.SugaredLogger
-	cache  *redis.Client
+	cache  *ttlcache.Cache[string, string]
 }
 
 type Middlewares struct {
 	loginPageURL string
 	serviceID    string
 	logger       *zap.SugaredLogger
-	cache        *redis.Client
+	cache        *ttlcache.Cache[string, string]
 }
 
 type Handlers struct {
@@ -43,7 +43,7 @@ type Handlers struct {
 	serviceID    string
 	CookiePath   string
 	logger       *zap.SugaredLogger
-	cache        *redis.Client
+	cache        *ttlcache.Cache[string, string]
 }
 
 type AuthGatewayOption struct {
@@ -84,12 +84,13 @@ func NewAuthGateway(o AuthGatewayOption) (*AuthGateway, error) {
 	}
 
 	//redis://<user>:<pass>@localhost:6379/<db>
-	opt, err := redis.ParseURL(o.RedisURL)
-	if err != nil {
-		return nil, fmt.Errorf("auth_gateway_lib could not parse RedisURL provided: %s", err)
-	}
+	// opt, err := redis.ParseURL(o.RedisURL)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("auth_gateway_lib could not parse RedisURL provided: %s", err)
+	// }
 
-	rdb := redis.NewClient(opt)
+	// rdb := redis.NewClient(opt)
+	rdb := ttlcache.New[string, string]()
 
 	return &AuthGateway{
 		logger: o.Logger,
@@ -175,7 +176,7 @@ func (h *Handlers) GetUser(tk string) (*User, error) {
 func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		ctx := context.Background()
+		// ctx := context.Background()
 		redirectURL := struct {
 			URL string
 		}{
@@ -187,12 +188,7 @@ func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 			Data:    redirectURL,
 		}
 
-		reqID := r.Header.Get("x-req-id")
-		if reqID == "" {
-			reqID = xid.New().String()
-			r.Header.Add("x-req-id", reqID)
-		}
-
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		requestLogger.Info("Check if sid (session id) cookie exists")
@@ -207,7 +203,17 @@ func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 		//sid cookie exists. let's fetch user
 		requestLogger.Info("sid cookie exists. Let's fetch user")
 
-		userJSON, err := s.cache.Get(ctx, cookie.Value).Result()
+		cacheEntry, err := s.cache.Get(cookie.Value)
+		if cacheEntry == nil {
+			requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
+			requestLogger.Infof("Error occured while fetching user from cache. Redirecting to login screen: %s", redirectURL)
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		userJSON := cacheEntry.Value()
+
+		// userJSON, err := s.cache.Get(ctx, cookie.Value).Result()
 		if err != nil {
 			requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
 			requestLogger.Infof("Error occured while fetching user from cache. Redirecting to login screen: %s", redirectURL)
@@ -221,6 +227,62 @@ func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 			requestLogger.Errorf("Could not parse user json: %s", err)
 			requestLogger.Infof("Could not parse user JSON. Redirecting to login screen: %s", redirectURL)
 			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		//User is valid.
+
+		//create a new request context containing the authenticated user
+		ctxWithUser := context.WithValue(r.Context(), CTX_USER_KEY, user)
+
+		//create a new request using that new context
+		rWithUser := r.WithContext(ctxWithUser)
+
+		h.ServeHTTP(w, rWithUser)
+
+	})
+}
+
+func (s *Middlewares) AddLoggedInUserDetails(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		reqID := r.Header.Get("x-req-id")
+		requestLogger := s.logger.With("request-id", reqID)
+
+		requestLogger.Info("Check if sid (session id) cookie exists")
+		cookie, err := r.Cookie("sid")
+		if err != nil {
+			requestLogger.Errorf("Error occured while fetching sid cookie: %s", err)
+			requestLogger.Info("Continue without adding logged in user info")
+			h.ServeHTTP(w, r)
+			return
+		}
+
+		//sid cookie exists. let's fetch user
+		requestLogger.Info("sid cookie exists. Let's fetch user")
+
+		cacheEntry, err := s.cache.Get(cookie.Value)
+		if cacheEntry == nil {
+			// requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
+			requestLogger.Info("Continue without adding logged in user info")
+			h.ServeHTTP(w, r)
+			return
+		}
+
+		userJSON := cacheEntry.Value()
+		if err != nil {
+			requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
+			requestLogger.Info("Continue without adding logged in user info")
+			h.ServeHTTP(w, r)
+			return
+		}
+
+		user := User{}
+		err = json.Unmarshal([]byte(userJSON), &user)
+		if err != nil {
+			requestLogger.Errorf("Could not parse user json: %s", err)
+			requestLogger.Info("Continue without adding logged in user info")
+			h.ServeHTTP(w, r)
 			return
 		}
 

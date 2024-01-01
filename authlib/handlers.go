@@ -1,7 +1,6 @@
 package authlib
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,8 +16,6 @@ func (s *Handlers) LoginRequestCallbackHandler() http.HandlerFunc {
 			"Function Name", "LoginRequestCallbackHandler",
 			"request-id", middleware.GetReqID(r.Context()),
 			"endpoint", r.URL.Path)
-
-		ctx := context.Background()
 
 		requestLogger.Debug("Checking for tk parameter. . .")
 		qs := r.URL.Query()
@@ -44,7 +41,8 @@ func (s *Handlers) LoginRequestCallbackHandler() http.HandlerFunc {
 
 		requestLogger.Info("Saving session id")
 		usr, _ := json.Marshal(u)
-		s.cache.Set(ctx, sessionID.String(), string(usr), SESSION_EXPIRY)
+		// s.cache.Set(ctx, sessionID.String(), string(usr), SESSION_EXPIRY)
+		s.cache.Set(sessionID.String(), string(usr), SESSION_EXPIRY)
 
 		expire := time.Now().Add(5 * time.Minute)
 		c := http.Cookie{
@@ -67,7 +65,6 @@ func (s *Handlers) Logout() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		ctx := context.Background()
 		requestLogger := s.logger.With(
 			"request-id", middleware.GetReqID(r.Context()),
 			"handler", "Logout",
@@ -79,7 +76,7 @@ func (s *Handlers) Logout() http.HandlerFunc {
 		if cookie, err := r.Cookie("sid"); err == nil {
 			//sid cookie exists. Let's delete it
 			requestLogger.Info("Deleting cookie")
-			s.cache.Del(ctx, cookie.Value)
+			s.cache.Delete(cookie.Value)
 		}
 
 		//Check if sid exists in cache
