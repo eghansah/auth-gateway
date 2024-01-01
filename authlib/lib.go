@@ -79,9 +79,9 @@ func NewAuthGateway(o AuthGatewayOption) (*AuthGateway, error) {
 		o.Logger = logger.Sugar()
 	}
 
-	if o.RedisURL == "" {
-		return nil, fmt.Errorf("a valid redis url must be provided in AuthGatewayOption")
-	}
+	// if o.RedisURL == "" {
+	// 	return nil, fmt.Errorf("a valid redis url must be provided in AuthGatewayOption")
+	// }
 
 	//redis://<user>:<pass>@localhost:6379/<db>
 	// opt, err := redis.ParseURL(o.RedisURL)
