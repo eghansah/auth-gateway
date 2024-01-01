@@ -21,24 +21,24 @@ type UserPermissions struct {
 }
 
 type Permission struct {
-	Service     string `gorm:"uniqueIndex,size:255"`
-	Permission  string `gorm:"uniqueIndex,size:255"`
+	Service     string `gorm:"uniqueIndex;size:255"`
+	Permission  string `gorm:"uniqueIndex;size:255"`
 	Description string
 }
 
 type UserGroup struct {
 	gorm.Model
-	User   string `gorm:"uniqueIndex,size:255"`
-	Group  string `gorm:"uniqueIndex,size:255"`
+	User   string `gorm:"uniqueIndex;size:255"`
+	Group  string `gorm:"column:user_group;uniqueIndex;size:255"`
 	Active bool
 }
 
 type AccessControl struct {
 	gorm.Model
-	Username  string `gorm:"uniqueIndex,size:255"`
-	Group     string `gorm:"uniqueIndex,size:255"`
-	Service   string `gorm:"uniqueIndex,size:255"`
-	Role      string `gorm:"uniqueIndex,size:255"`
+	Username  string `gorm:"uniqueIndex;size:255"`
+	Group     string `gorm:"uniqueIndex;size:255;column:user_group"`
+	Service   string `gorm:"uniqueIndex;size:255"`
+	Role      string `gorm:"uniqueIndex;size:255"`
 	IsAllowed bool
 }
 
@@ -50,8 +50,8 @@ type OneTimeUserAuthToken struct {
 type Service struct {
 	gorm.Model
 	ID               int64
-	ServiceID        string         `gorm:"uniqueIndex,size:255"`
-	Domain           sql.NullString `gorm:"uniqueIndex,size:255"`
+	ServiceID        string         `gorm:"uniqueIndex;size:255"`
+	Domain           sql.NullString `gorm:"uniqueIndex;size:255"`
 	LoginRedirectURL string
 	CallbackURL      sql.NullString
 	SecretKey        string
@@ -70,7 +70,7 @@ type PasswordResetRequest struct {
 
 func (s *server) GetUserGroups(username string) []string {
 	groups := make([]string, 1)
-	s.db.Model(UserGroup{}).Select("group").Where("user = ? and active=true", username).Find(&groups)
+	s.db.Model(UserGroup{}).Select("user_group").Where("user = ? and active=1", username).Find(&groups)
 
 	return groups
 }
@@ -82,7 +82,7 @@ func (s *server) GetUserPermissions(username string) map[string]bool {
 	grps := s.GetUserGroups(username)
 
 	dbPermissions := make([]AccessControl, 1)
-	s.db.Model(AccessControl{}).Where("username = ? or `group` in (?)", username, grps).Find(&dbPermissions)
+	s.db.Model(AccessControl{}).Where("username = ? or user_group in (?)", username, grps).Find(&dbPermissions)
 
 	for _, policy := range dbPermissions {
 		if allowed, ok := perm[policy.Role]; ok {

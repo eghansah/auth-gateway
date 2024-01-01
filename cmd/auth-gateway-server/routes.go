@@ -58,7 +58,7 @@ func (s *server) InitRoutes() {
 	r.Use(middleware.Recoverer)
 
 	r.Use(s.CSRFMiddleware)
-	r.Use(s.createRequestIDMiddleware)
+	// r.Use(s.createRequestIDMiddleware)
 
 	// Set a timeout value on the request context (ctx), that will signal
 	// through ctx.Done() that the request has timed out and further

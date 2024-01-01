@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/eghansah/auth-gateway/auth_methods"
 	"github.com/eghansah/auth-gateway/authlib"
+	"github.com/eghansah/auth-gateway/cmd/auth-gateway-server/auth_methods"
 	"github.com/google/uuid"
 	"github.com/rs/xid"
 	"github.com/spf13/viper"

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/middleware"
 	"github.com/rs/xid"
 )
 
@@ -14,6 +15,7 @@ func (s *Handlers) LoginRequestCallbackHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requestLogger := s.logger.With(
 			"Function Name", "LoginRequestCallbackHandler",
+			"request-id", middleware.GetReqID(r.Context()),
 			"endpoint", r.URL.Path)
 
 		ctx := context.Background()
@@ -66,9 +68,8 @@ func (s *Handlers) Logout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		ctx := context.Background()
-		reqID := r.Header.Get("x-req-id")
 		requestLogger := s.logger.With(
-			"request-id", reqID,
+			"request-id", middleware.GetReqID(r.Context()),
 			"handler", "Logout",
 			"Function Name", "Logout",
 			"endpoint", r.URL.Path,

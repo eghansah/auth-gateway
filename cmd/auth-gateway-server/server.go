@@ -20,6 +20,8 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/eghansah/auth-gateway/authlib"
+	"github.com/go-chi/chi/middleware"
+
 	"github.com/google/uuid"
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
@@ -305,7 +307,7 @@ func (s *server) Register() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 		tmpl := template.Must(template.ParseFiles("html/register.html"))
 
@@ -434,7 +436,7 @@ func (s *server) APILogin() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		// if cookie, err := r.Cookie("sid"); err == nil {
@@ -608,7 +610,7 @@ func (s *server) APILogin() http.HandlerFunc {
 
 func (s *server) Login() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		if r.Method == "GET" {
@@ -637,7 +639,7 @@ func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Req
 	// pc, _, _, _ := runtime.Caller(1)
 	// details := runtime.FuncForPC(pc)
 
-	reqID := r.Header.Get("x-req-id")
+	reqID := middleware.GetReqID(r.Context())
 	requestLogger := s.logger.With("request-id", reqID)
 
 	qs := r.URL.Query()
@@ -703,7 +705,7 @@ func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Req
 
 func (s *server) ProfilePage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		t := template.Must(template.ParseFiles("templates/profile.html"))
@@ -731,10 +733,12 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 		// 	"endpoint":      r.URL.Path,
 		// })
 
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		u := authlib.User{}
+
+		requestLogger.With("ctx", r.Context()).Info("Context printed !!!")
 
 		reqApiKey := r.Header.Get("X-API-KEY")
 		if reqApiKey == "" {
@@ -833,7 +837,7 @@ func (s *server) WhoAmI() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		redirectURL := struct {
@@ -931,7 +935,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		u := JSONResponse{
@@ -1048,7 +1052,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 func (s *server) ChangePasswordHandler() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		reqMap := make(map[string]string)
@@ -1147,7 +1151,7 @@ func (s *server) Logout() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
 		if cookie, err := r.Cookie("sid"); err == nil {
@@ -1201,7 +1205,7 @@ func (s *server) RegisterService() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		reqID := r.Header.Get("x-req-id")
+		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 		tmpl := template.Must(template.ParseFiles("html/register_service.html"))
 
