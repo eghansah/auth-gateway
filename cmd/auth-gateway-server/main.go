@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/eghansah/auth-gateway/auth_methods"
 	"github.com/eghansah/auth-gateway/authlib"
-	"github.com/eghansah/auth-gateway/cmd/auth-gateway-server/auth_methods"
 	"github.com/google/uuid"
 	"github.com/rs/xid"
 	"github.com/spf13/viper"
@@ -62,8 +63,11 @@ func main() {
 		supportedAuthenticationMethods: make(map[string]authlib.AuthenticationMethod),
 	}
 	cfg := config{
-		Host: "127.0.0.1",
-		Port: 9000,
+		Host:            "127.0.0.1",
+		Port:            9000,
+		SessionDuration: 5 * time.Minute,
+		LoginURL:        "http://127.0.0.1:9000/auth/login",
+		SubDirectory:    "/auth",
 	}
 	err := viper.Unmarshal(&cfg)
 	if err != nil {

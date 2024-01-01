@@ -30,4 +30,5 @@ export FLEXCUBE_DBPASSWORD="x"
 export FLEXCUBE_SERVICE_NAME="x"
 export MFA_URL="https://"
 
+
 ./build/auth-gateway-server

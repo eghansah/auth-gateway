@@ -136,11 +136,12 @@
           crossDomain: true,
           success: function (data) {
             console.info(data);
+
             if (
               data.status === "redirect_internal" ||
               data.status === "redirect_external"
             ) {
-              window.location.href = data.redirect_to;
+              window.location.href = data.redirect_url;
             }
           },
         });

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -32,6 +33,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
+	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
@@ -57,6 +59,7 @@ type config struct {
 	DBType                string        `mapstructure:"AUTH_DB_TYPE"`
 	CORSWhiteList         string        `mapstructure:"AUTH_CORS_ORIGIN_WHITELIST"`
 	SubDirectory          string        `mapstructure:"AUTH_SUBDIRECTORY"`
+	LoginURL              string        `mapstructure:"LOGIN_URL"`
 	LogLevel              string
 }
 
@@ -70,6 +73,11 @@ type server struct {
 	logger                         *zap.SugaredLogger
 	supportedAuthenticationMethods map[string]authlib.AuthenticationMethod
 }
+
+const STATIC_PATH = "/auth/static/"
+const API_LOGIN_URL = "/auth/api/login"
+const API_WHOAMI_URL = "/auth/whoami"
+const PROFILE_URL = "/auth/profile"
 
 func (s *server) addAuthenticationMethod(authMethodCode string, authMethod authlib.AuthenticationMethod) {
 	s.supportedAuthenticationMethods[authMethodCode] = authMethod
@@ -228,6 +236,36 @@ func (s *server) Init(c config) {
 	var db *gorm.DB
 	var err error
 	switch strings.TrimSpace(strings.ToLower(s.cfg.DBType)) {
+	case "mssql":
+		var err error
+
+		query := url.Values{}
+		query.Add("database", s.cfg.DBName)
+		query.Add("parseTime", "True")
+		query.Add("loc", "Local")
+
+		dsn := &url.URL{
+			Scheme: "sqlserver",
+			User:   url.UserPassword(s.cfg.DBUser, s.cfg.DBPassword),
+			Host:   fmt.Sprintf("%s:%d", s.cfg.DBHost, s.cfg.DBPort),
+			// Path:  instance, // if connecting to an instance instead of a port
+			RawQuery: query.Encode(),
+		}
+
+		db, err = gorm.Open(sqlserver.Open(dsn.String()), &gorm.Config{
+			NamingStrategy: schema.NamingStrategy{
+				TablePrefix: "auth_",
+			},
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		if err != nil {
+			log.Printf("Unable to initialize db connection: %s\n", err.Error())
+			panic(err)
+		}
+
 	case "mysql":
 		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 			s.cfg.DBUser, s.cfg.DBPassword, s.cfg.DBHost, s.cfg.DBPort, s.cfg.DBName)
@@ -399,51 +437,51 @@ func (s *server) APILogin() http.HandlerFunc {
 		reqID := r.Header.Get("x-req-id")
 		requestLogger := s.logger.With("request-id", reqID)
 
-		if cookie, err := r.Cookie("sid"); err == nil {
-			//sid cookie exists. Let's check if session is valid
-			requestLogger = requestLogger.With("sid", cookie.Value)
-			requestLogger.Info("sid cookie exists. Let's check if session is valid")
+		// if cookie, err := r.Cookie("sid"); err == nil {
+		// 	//sid cookie exists. Let's check if session is valid
+		// 	requestLogger = requestLogger.With("sid", cookie.Value)
+		// 	requestLogger.Info("sid cookie exists. Let's check if session is valid")
 
-			obj, err := s.cache.Get(cookie.Value) //.Int()
-			if err != nil {
-				requestLogger.Errorf("Error while fetching session id '%s' from cache: %s", cookie.Value, err)
-				// return nil
+		// 	obj, err := s.cache.Get(cookie.Value) //.Int()
+		// 	if err != nil {
+		// 		requestLogger.Errorf("Error while fetching session id '%s' from cache: %s", cookie.Value, err)
+		// 		// return nil
 
-				errMsg := fmt.Errorf("Invalid session id. Req ID: %s", reqID)
-				errorJSON(w, errMsg, http.StatusUnauthorized)
-				return
-			}
+		// 		errMsg := fmt.Errorf("Invalid session id. Req ID: %s", reqID)
+		// 		errorJSON(w, errMsg, http.StatusUnauthorized)
+		// 		return
+		// 	}
 
-			if obj != nil {
-				uid, err := strconv.ParseInt(obj.Value(), 10, 64)
-				if err != nil {
-					requestLogger.Errorf("could not convert user id ('%s') to int: %s", obj.Value(), err)
-					// return nil
+		// 	if obj != nil {
+		// 		uid, err := strconv.ParseInt(obj.Value(), 10, 64)
+		// 		if err != nil {
+		// 			requestLogger.Errorf("could not convert user id ('%s') to int: %s", obj.Value(), err)
+		// 			// return nil
 
-					errMsg := fmt.Errorf("Invalid user id. Req ID: %s", reqID)
-					errorJSON(w, errMsg, http.StatusUnauthorized)
-					return
-				}
+		// 			errMsg := fmt.Errorf("Invalid user id. Req ID: %s", reqID)
+		// 			errorJSON(w, errMsg, http.StatusUnauthorized)
+		// 			return
+		// 		}
 
-				if err == nil {
-					//Session ID is valid
-					//Let's fetch user
-					requestLogger.Info("Session ID is valid. Let's fetch user")
+		// 		if err == nil {
+		// 			//Session ID is valid
+		// 			//Let's fetch user
+		// 			requestLogger.Info("Session ID is valid. Let's fetch user")
 
-					user := authlib.User{}
-					tx := s.db.Model(authlib.User{}).Where("id = ?", uid).First(&user)
-					if tx.Error != nil {
-						requestLogger.Errorf("An error occured while fetching user from db: %s", tx.Error)
-					} else {
-						//User is valid. Redirect
-						requestLogger.Info("User is valid. Calling redirectAfterSuccessfulLogin . . .")
-						s.redirectAfterSuccessfulLogin(w, r, cookie, &user)
-						return
-					}
+		// 			user := authlib.User{}
+		// 			tx := s.db.Model(authlib.User{}).Where("id = ?", uid).First(&user)
+		// 			if tx.Error != nil {
+		// 				requestLogger.Errorf("An error occured while fetching user from db: %s", tx.Error)
+		// 			} else {
+		// 				//User is valid. Redirect
+		// 				requestLogger.Info("User is valid. Calling redirectAfterSuccessfulLogin . . .")
+		// 				s.redirectAfterSuccessfulLogin(w, r, cookie, &user)
+		// 				return
+		// 			}
 
-				}
-			}
-		}
+		// 		}
+		// 	}
+		// }
 
 		requestLogger.Info("Either no sid cookie was found or sid was not found in cache. Proceeding")
 
@@ -552,16 +590,12 @@ func (s *server) APILogin() http.HandlerFunc {
 		}
 
 		requestLogger.Info("redirect user to profile page")
-		profileURL, err := s.router.Get("profile").URL()
-		if err != nil {
-			requestLogger.Errorf("Profile URL reversal failed: %s", err)
-		}
 
 		// http.Redirect(w, r, profileURL.Path, http.StatusSeeOther)
 		ur := JSONResponse{
 			Error:       false,
 			Message:     "Login successful",
-			RedirectURL: profileURL.Path,
+			RedirectURL: fmt.Sprintf("%s%s", s.cfg.URLPrefix, PROFILE_URL),
 			Status:      "redirect_internal",
 		}
 
@@ -580,32 +614,14 @@ func (s *server) Login() http.HandlerFunc {
 		if r.Method == "GET" {
 			t := template.Must(template.ParseFiles("templates/login.html"))
 
-			apiLoginURL, err := s.router.Get("api_login").URL()
-			if err != nil {
-				requestLogger.Errorf("could not find api_login url: %s. Defaulting to empty path.", err)
-				apiLoginURL = &url.URL{}
-			}
-
-			apiWhoAmIURL, err := s.router.Get("whoami").URL()
-			if err != nil {
-				requestLogger.Errorf("could not find api_whoami url: %s. Defaulting to empty path.", err)
-				apiWhoAmIURL = &url.URL{}
-			}
-
-			profileURL, err := s.router.Get("profile").URL()
-			if err != nil {
-				requestLogger.Errorf("could not find api_whoami url: %s. Defaulting to empty path.", err)
-				profileURL = &url.URL{}
-			}
-
 			// Get current user infomration.
 			// fmt.Printf("url => %+v", u.Path)
-			err = t.Execute(w, map[string]interface{}{
+			err := t.Execute(w, map[string]interface{}{
 				csrf.TemplateTag: csrf.TemplateField(r),
-				"STATIC_PATH":    STATIC_PATH,
-				"API_LOGIN_URL":  apiLoginURL.Path,
-				"API_WHOAMI_URL": apiWhoAmIURL.Path,
-				"PROFILE_URL":    profileURL.Path,
+				"STATIC_PATH":    fmt.Sprintf("%s%s", s.cfg.URLPrefix, STATIC_PATH),
+				"API_LOGIN_URL":  fmt.Sprintf("%s%s", s.cfg.URLPrefix, API_LOGIN_URL),
+				"API_WHOAMI_URL": fmt.Sprintf("%s%s", s.cfg.URLPrefix, API_WHOAMI_URL),
+				"PROFILE_URL":    fmt.Sprintf("%s%s", s.cfg.URLPrefix, PROFILE_URL),
 				"QUERY_PARAMS":   r.URL.RawQuery,
 			})
 			if err != nil {
@@ -820,13 +836,23 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		reqID := r.Header.Get("x-req-id")
 		requestLogger := s.logger.With("request-id", reqID)
 
+		redirectURL := struct {
+			URL string
+		}{
+			URL: s.cfg.LoginURL,
+		}
+		resp := JSONResponse{
+			Error:   true,
+			Message: "user not logged in",
+			Data:    redirectURL,
+		}
+
 		requestLogger.Info("Checking if cookie exists")
 		cookie, err := r.Cookie("sid")
 		if err != nil {
 			requestLogger.Info("could not fetch cookie. panic. Are you calling the right endpoint? If you're calling from an API, you're probably looking for the /api/verify_login endpoint")
-			errMsg := fmt.Errorf("No cookie found")
 
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			writeJSON(w, http.StatusUnauthorized, resp)
 			return
 		}
 
@@ -834,9 +860,8 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		usr := s.getUser(reqID, cookie.Value)
 		if usr == nil {
 			requestLogger.Info("could not fetch user. panic")
-			errMsg := fmt.Errorf("Could not find active user with this ID")
 
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			writeJSON(w, http.StatusUnauthorized, resp)
 			return
 		}
 
@@ -1169,5 +1194,85 @@ func (s *server) GenerateNewSessionKeys() http.HandlerFunc {
 		</table>
 		</body>
 		</html>`, serviceID, apiKey, secretKey)))
+	}
+}
+
+func (s *server) RegisterService() http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		reqID := r.Header.Get("x-req-id")
+		requestLogger := s.logger.With("request-id", reqID)
+		tmpl := template.Must(template.ParseFiles("html/register_service.html"))
+
+		requestLogger.Info("Register service handler")
+		if r.Method == "GET" {
+			tmpl.Execute(w, map[string]interface{}{
+				csrf.TemplateTag: csrf.TemplateField(r),
+			})
+			return
+		}
+
+		reqMap := make(map[string]string)
+
+		// Try to decode the request body into the struct. If there is an error,
+		// try to populate struct from POST or GET params.
+		// Read the content
+		var rawReqBody []byte
+		if r.Body != nil {
+			rawReqBody, _ = io.ReadAll(r.Body)
+			r.Body.Close()
+		} // Restore the io.ReadCloser to its original state
+		r.Body = io.NopCloser(bytes.NewBuffer(rawReqBody))
+
+		err := json.Unmarshal([]byte(rawReqBody), &reqMap)
+		if err != nil {
+			r.ParseForm()
+
+			for key, value := range r.Form {
+				reqMap[key] = value[0]
+			}
+		}
+
+		//Check for required params
+		required := []string{"login_redirect_url", "sid", "domain", "callback"}
+		for _, rq := range required {
+			if _, ok := reqMap[rq]; !ok {
+				tmpl.Execute(w, map[string]interface{}{
+					csrf.TemplateTag: csrf.TemplateField(r),
+					"msg":            fmt.Sprintf("Required parameter missing: %s", rq),
+				})
+				return
+			}
+		}
+
+		apiKey := uuid.New().String()
+		secretKey := strings.Replace(uuid.New().String(), "-", "", -1)
+
+		newSvc := Service{
+			APIKey:    apiKey,
+			SecretKey: secretKey,
+			ServiceID: reqMap["sid"],
+			Domain: sql.NullString{
+				Valid:  true,
+				String: reqMap["domain"]},
+			LoginRedirectURL: reqMap["login_redirect_url"],
+			CallbackURL: sql.NullString{
+				Valid:  true,
+				String: reqMap["callback"]},
+			Enabled: false,
+		}
+
+		tx := s.db.Create(&newSvc)
+		if tx.Error != nil {
+			log.Println(tx.Error)
+			tmpl.Execute(w, map[string]interface{}{
+				csrf.TemplateTag: csrf.TemplateField(r),
+				"msg":            "Could not register service",
+			})
+			return
+		}
+
+		w.Write([]byte("Service successfully registered"))
 	}
 }
