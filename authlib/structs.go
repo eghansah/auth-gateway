@@ -33,7 +33,7 @@ type User struct {
 	IAMRoles             map[string]map[string]bool `gorm:"-" json:"iam_roles"`
 	Attributes           map[string]string          `gorm:"-" json:"attributes"`
 	UserMessage          string                     `json:"message,omitempty"`
-	// Domains              []string
+	ActiveDomain         string                     `gorm:"-"`
 }
 
 // type APIUserResponse struct {
