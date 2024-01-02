@@ -47,6 +47,7 @@ type AccessControl struct {
 	Group     string `gorm:"uniqueIndex;size:255;column:user_group"`
 	Service   string `gorm:"uniqueIndex;size:255"`
 	Role      string `gorm:"uniqueIndex;size:255"`
+	Domain    string `gorm:"uniqueIndex;size:255"`
 	IsAllowed bool
 }
 
@@ -87,8 +88,9 @@ func (s *server) GetUserGroups(username string, logger *zap.SugaredLogger) []str
 }
 
 func (s *server) GetUserPermissions(username string,
-	logger *zap.SugaredLogger) map[string]bool {
+	logger *zap.SugaredLogger) map[string]map[string]bool {
 
+	domainPermissions := make(map[string]map[string]bool)
 	perm := make(map[string]bool)
 
 	grps := s.GetUserGroups(username, logger)
@@ -107,10 +109,11 @@ func (s *server) GetUserPermissions(username string,
 			}
 		}
 
-		perm[policy.Role] = policy.IsAllowed
+		// perm[policy.Role] = policy.IsAllowed
+		domainPermissions[policy.Domain][policy.Role] = policy.IsAllowed
 	}
 
-	return perm
+	return domainPermissions
 }
 
 func (s *server) GetUserDomains(username string,

@@ -30,10 +30,10 @@ type User struct {
 	EnableTOTP           bool
 	TOTPSecret           string
 	TOTPSecretLength     int64
-	IAMRoles             map[string]bool   `gorm:"-" json:"iam_roles"`
-	Attributes           map[string]string `gorm:"-" json:"attributes"`
-	UserMessage          string            `json:"message,omitempty"`
-	Domains              []string
+	IAMRoles             map[string]map[string]bool `gorm:"-" json:"iam_roles"`
+	Attributes           map[string]string          `gorm:"-" json:"attributes"`
+	UserMessage          string                     `json:"message,omitempty"`
+	// Domains              []string
 }
 
 // type APIUserResponse struct {

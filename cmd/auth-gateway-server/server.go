@@ -563,7 +563,6 @@ func (s *server) APILogin() http.HandlerFunc {
 
 		//Fetch user roles
 		authenticatedUser.IAMRoles = s.GetUserPermissions(authenticatedUser.Email, requestLogger)
-		authenticatedUser.Domains = s.GetUserDomains(authenticatedUser.Email, requestLogger)
 		authenticatedUser.Attributes = map[string]string{}
 
 		//Login succesful. Let's generate session id
@@ -832,7 +831,6 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 		u.Active = usr.Active
 
 		u.IAMRoles = s.GetUserPermissions(u.Email, requestLogger)
-		u.Domains = s.GetUserDomains(u.Email, requestLogger)
 
 		requestLogger.Info("User found => %+v", u)
 
@@ -884,7 +882,6 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		u.GUID = usr.GUID
 		u.Active = usr.Active
 		u.IAMRoles = s.GetUserPermissions(u.Email, requestLogger)
-		u.Domains = s.GetUserDomains(u.Email, requestLogger)
 
 		jsResp := JSONResponse{
 			Data: u,
