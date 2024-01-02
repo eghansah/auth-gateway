@@ -540,7 +540,7 @@ func (s *server) APILogin() http.HandlerFunc {
 
 		authenticatedUser, err := s.authenticateUser(requestLogger, user, lr)
 		if err != nil {
-			requestLogger.Info("authenticateUser returned an error: %s", err)
+			requestLogger.With("err", err).Info("authenticateUser returned an error")
 			// errMsg := fmt.Errorf("incorrect username or password")
 			errorJSON(w, err, http.StatusUnauthorized)
 			return
@@ -555,8 +555,15 @@ func (s *server) APILogin() http.HandlerFunc {
 			s.db.Create(&authenticatedUser)
 		}
 
+		if !authenticatedUser.Active {
+			requestLogger.Info("User is not active.")
+			errorJSON(w, fmt.Errorf("user is not active"), http.StatusUnauthorized)
+			return
+		}
+
 		//Fetch user roles
-		authenticatedUser.IAMRoles = s.GetUserPermissions(authenticatedUser.Email)
+		authenticatedUser.IAMRoles = s.GetUserPermissions(authenticatedUser.Email, requestLogger)
+		authenticatedUser.Domains = s.GetUserDomains(authenticatedUser.Email, requestLogger)
 		authenticatedUser.Attributes = map[string]string{}
 
 		//Login succesful. Let's generate session id
@@ -824,7 +831,8 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 		u.GUID = usr.GUID
 		u.Active = usr.Active
 
-		u.IAMRoles = s.GetUserPermissions(u.Email)
+		u.IAMRoles = s.GetUserPermissions(u.Email, requestLogger)
+		u.Domains = s.GetUserDomains(u.Email, requestLogger)
 
 		requestLogger.Info("User found => %+v", u)
 
@@ -875,7 +883,8 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		u.Email = usr.Email
 		u.GUID = usr.GUID
 		u.Active = usr.Active
-		u.IAMRoles = s.GetUserPermissions(u.Email)
+		u.IAMRoles = s.GetUserPermissions(u.Email, requestLogger)
+		u.Domains = s.GetUserDomains(u.Email, requestLogger)
 
 		jsResp := JSONResponse{
 			Data: u,

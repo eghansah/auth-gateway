@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/eghansah/auth-gateway/authlib"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -28,8 +29,15 @@ type Permission struct {
 
 type UserGroup struct {
 	gorm.Model
-	User   string `gorm:"uniqueIndex;size:255"`
+	User   string `gorm:"column:username;uniqueIndex;size:255"`
 	Group  string `gorm:"column:user_group;uniqueIndex;size:255"`
+	Active bool
+}
+
+type UserDomain struct {
+	gorm.Model
+	User   string `gorm:"column:username;uniqueIndex;size:255"`
+	Domain string `gorm:"column:domain;uniqueIndex;size:255"`
 	Active bool
 }
 
@@ -68,18 +76,24 @@ type PasswordResetRequest struct {
 	Status    sql.NullString
 }
 
-func (s *server) GetUserGroups(username string) []string {
+func (s *server) GetUserGroups(username string, logger *zap.SugaredLogger) []string {
 	groups := make([]string, 1)
-	s.db.Model(UserGroup{}).Select("user_group").Where("user = ? and active=1", username).Find(&groups)
+
+	// s.db.Raw("")
+
+	s.db.Model(UserGroup{}).Select("user_group").Where("username = ? and active=1", username).Find(&groups)
 
 	return groups
 }
 
-func (s *server) GetUserPermissions(username string) map[string]bool {
+func (s *server) GetUserPermissions(username string,
+	logger *zap.SugaredLogger) map[string]bool {
 
 	perm := make(map[string]bool)
 
-	grps := s.GetUserGroups(username)
+	grps := s.GetUserGroups(username, logger)
+
+	logger.With("groups", grps, "username", username).Info("fetching user permissions")
 
 	dbPermissions := make([]AccessControl, 1)
 	s.db.Model(AccessControl{}).Where("username = ? or user_group in (?)", username, grps).Find(&dbPermissions)
@@ -99,12 +113,28 @@ func (s *server) GetUserPermissions(username string) map[string]bool {
 	return perm
 }
 
+func (s *server) GetUserDomains(username string,
+	logger *zap.SugaredLogger) []string {
+
+	domains := []string{}
+	userDomains := []UserDomain{}
+
+	s.db.Model(UserDomain{}).Where("username = ? and active=1", username).Find(&userDomains)
+
+	for _, domain := range userDomains {
+		domains = append(domains, domain.Domain)
+	}
+
+	return domains
+}
+
 func (s *server) MigrateDB() {
 	s.db.AutoMigrate(authlib.User{})
 	s.db.AutoMigrate(Service{})
 	s.db.AutoMigrate(PasswordResetRequest{})
 	s.db.AutoMigrate(AccessControl{})
 	s.db.AutoMigrate(UserGroup{})
+	s.db.AutoMigrate(UserDomain{})
 	// s.db.AutoMigrate(FunctionScreens{})
 
 	// apikey, err := GenerateRandomStringURLSafe(64)

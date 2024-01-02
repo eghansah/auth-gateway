@@ -100,8 +100,8 @@
           success: function (data) {
             console.info(data);
             if (data.email != "") {
-              if (data.redirect_to != "") {
-                window.location.href = data.redirect_to;
+              if (data.redirect_url != "") {
+                window.location.href = data.redirect_url;
               } else {
                 window.location.href = "{{.PROFILE_URL}}";
               }
@@ -134,9 +134,15 @@
             withCredentials: true,
           },
           crossDomain: true,
+          error: function (data) {
+            console.log("login function returned an error");
+            console.log(data);
+            alert(data.responseJSON.message);
+          },
           success: function (data) {
             console.info(data);
 
+            // if (confirm("Redirect ?"))
             if (
               data.status === "redirect_internal" ||
               data.status === "redirect_external"
