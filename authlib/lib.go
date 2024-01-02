@@ -113,6 +113,95 @@ func NewAuthGateway(o AuthGatewayOption) (*AuthGateway, error) {
 		}}, nil
 }
 
+func (h *Handlers) GetActiveDomain(r *http.Request) (string, error) {
+
+	requestLogger := h.logger.With("function name", "GetActiveDomain")
+
+	cookie, err := r.Cookie("sid")
+	if err != nil {
+		requestLogger.With("err", err).Errorf("Error occured while fetching sid cookie: %s", err)
+		return "", err
+	}
+
+	//sid cookie exists. let's fetch user
+	requestLogger.Info("sid cookie exists. Let's fetch user")
+
+	cacheEntry, err := h.cache.Get(cookie.Value)
+	if cacheEntry == nil {
+		requestLogger.Error("user not found in cache")
+		return "", fmt.Errorf("user not found in cache")
+	}
+
+	if err != nil {
+		requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
+		return "", err
+	}
+
+	user := User{}
+	userJSON := cacheEntry.Value()
+	err = json.Unmarshal([]byte(userJSON), &user)
+	if err != nil {
+		requestLogger.Errorf("Could not parse user json: %s", err)
+		requestLogger.Info("Continue without adding logged in user info")
+
+		return "", fmt.Errorf("Could not parse user json: %s", err)
+	}
+
+	//User is valid.
+	return user.ActiveDomain, nil
+}
+
+func (h *Handlers) SetActiveDomain(
+	r *http.Request, activeDomain string) error {
+
+	requestLogger := h.logger.With(
+		"function name", "SetActiveDomain",
+		"domain", activeDomain)
+
+	cookie, err := r.Cookie("sid")
+	if err != nil {
+		requestLogger.With("err", err).Errorf("Error occured while fetching sid cookie: %s", err)
+		return err
+	}
+
+	//sid cookie exists. let's fetch user
+	requestLogger.Info("sid cookie exists. Let's fetch user")
+
+	cacheEntry, err := h.cache.Get(cookie.Value)
+	if cacheEntry == nil {
+		requestLogger.Error("user not found in cache")
+		return fmt.Errorf("user not found in cache")
+	}
+
+	if err != nil {
+		requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
+		return err
+	}
+
+	user := User{}
+	userJSON := cacheEntry.Value()
+	err = json.Unmarshal([]byte(userJSON), &user)
+	if err != nil {
+		requestLogger.Errorf("Could not parse user json: %s", err)
+		requestLogger.Info("Continue without adding logged in user info")
+
+		return fmt.Errorf("Could not parse user json: %s", err)
+	}
+
+	//User is valid.
+	if _, ok := user.IAMRoles[activeDomain]; !ok {
+		return fmt.Errorf("user does not have access to this domain")
+	}
+
+	requestLogger.Info("Updating user's active domain")
+	user.ActiveDomain = activeDomain
+	usr, _ := json.Marshal(user)
+	// s.cache.Set(ctx, sessionID.String(), string(usr), SESSION_EXPIRY)
+	h.cache.Set(cookie.Value, string(usr), SESSION_EXPIRY)
+
+	return nil
+}
+
 func (h *Handlers) GetUser(tk string) (*User, error) {
 
 	u := User{}
@@ -269,7 +358,6 @@ func (s *Middlewares) AddLoggedInUserDetails(h http.Handler) http.Handler {
 			return
 		}
 
-		userJSON := cacheEntry.Value()
 		if err != nil {
 			requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
 			requestLogger.Info("Continue without adding logged in user info")
@@ -278,6 +366,7 @@ func (s *Middlewares) AddLoggedInUserDetails(h http.Handler) http.Handler {
 		}
 
 		user := User{}
+		userJSON := cacheEntry.Value()
 		err = json.Unmarshal([]byte(userJSON), &user)
 		if err != nil {
 			requestLogger.Errorf("Could not parse user json: %s", err)
