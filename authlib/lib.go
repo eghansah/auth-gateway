@@ -144,7 +144,7 @@ func (h *Handlers) GetActiveDomain(r *http.Request) (string, error) {
 		requestLogger.Errorf("Could not parse user json: %s", err)
 		requestLogger.Info("Continue without adding logged in user info")
 
-		return "", fmt.Errorf("Could not parse user json: %s", err)
+		return "", fmt.Errorf("could not parse user json: %s", err)
 	}
 
 	//User is valid.
@@ -185,7 +185,7 @@ func (h *Handlers) SetActiveDomain(
 		requestLogger.Errorf("Could not parse user json: %s", err)
 		requestLogger.Info("Continue without adding logged in user info")
 
-		return fmt.Errorf("Could not parse user json: %s", err)
+		return fmt.Errorf("could not parse user json: %s", err)
 	}
 
 	//User is valid.
@@ -211,7 +211,7 @@ func (h *Handlers) GetUser(tk string) (*User, error) {
 	req, err := http.NewRequest("GET", h.whoAmIURL, nil)
 	if err != nil {
 		requestLogger.Error("Error occured while creating get request to fetch details of logged in user: %s", err)
-		return nil, fmt.Errorf("Error creating user request: %s", err)
+		return nil, fmt.Errorf("error creating user request: %s", err)
 	}
 
 	req.Header.Add("X-API-KEY", h.apikey)

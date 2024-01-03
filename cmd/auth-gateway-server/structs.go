@@ -110,6 +110,11 @@ func (s *server) GetUserPermissions(username string,
 		}
 
 		// perm[policy.Role] = policy.IsAllowed
+
+		if _, ok := domainPermissions[policy.Domain]; !ok {
+			domainPermissions[policy.Domain] = make(map[string]bool)
+		}
+
 		domainPermissions[policy.Domain][policy.Role] = policy.IsAllowed
 	}
 
