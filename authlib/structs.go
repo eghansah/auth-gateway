@@ -1,6 +1,7 @@
 package authlib
 
 import (
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -86,4 +87,16 @@ func (user *User) Clone() User {
 		Attributes:           user.Attributes,
 		UserMessage:          user.UserMessage,
 	}
+}
+
+func (user *User) HasPriviledge(reqdPermission string) error {
+	if _, ok := user.IAMRoles[user.ActiveDomain]; !ok {
+		return fmt.Errorf("user does not have any permission in the current domain: %s", user.ActiveDomain)
+	}
+
+	if accessAllowed, ok := user.IAMRoles[user.ActiveDomain][reqdPermission]; !ok || !accessAllowed {
+		return fmt.Errorf("user does not have the required permission: %s", reqdPermission)
+	}
+
+	return nil
 }
