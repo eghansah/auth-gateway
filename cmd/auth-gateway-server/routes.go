@@ -98,18 +98,14 @@ func (s *server) InitRoutes() {
 		r.Post("/api/login", s.APILogin())
 	})
 
-	// r.HandleFunc(fmt.Sprintf("%s/auth", s.cfg.URLPrefix), s.RegisterService()).Name("register_service")
-	// r.HandleFunc(fmt.Sprintf("%s/auth/register", s.cfg.URLPrefix), s.Register()).Name("register")
-	// r.HandleFunc(fmt.Sprintf("%s/auth/login", s.cfg.URLPrefix), s.Login()).Name("login").Methods("GET", "OPTIONS")
-	// r.HandleFunc(fmt.Sprintf("%s/auth/logout", s.cfg.URLPrefix), s.Logout()).Name("logout")
-	// //r.HandleFunc(fmt.Sprintf("%s/auth/request_password_reset", s.cfg.URLPrefix), s.PasswordResetRequestHandler()).Name("password_reset_request").Methods("POST", "OPTIONS")
-	// //r.HandleFunc(fmt.Sprintf("%s/auth/change_password", s.cfg.URLPrefix), s.ChangePasswordHandler()).Name("change_password").Methods("POST", "OPTIONS")
-	// r.HandleFunc(fmt.Sprintf("%s/auth/csrf", s.cfg.URLPrefix), s.GetCSRFToken()).Name("gencsrf")
-	// r.HandleFunc(fmt.Sprintf("%s/auth/apikeys", s.cfg.URLPrefix), s.GenerateNewSessionKeys())
-	// r.HandleFunc(fmt.Sprintf("%s/auth/whoami", s.cfg.URLPrefix), s.WhoAmI()).Name("whoami")
-	// r.HandleFunc(fmt.Sprintf("%s/auth/profile", s.cfg.URLPrefix), s.ProfilePage()).Name("profile")
-	// r.HandleFunc(fmt.Sprintf("%s/auth/api/verify_login", s.cfg.URLPrefix), s.GetLoggedInUserDetails())
-	// r.HandleFunc(fmt.Sprintf("%s/auth/api/login", s.cfg.URLPrefix), s.APILogin()).Name("api_login").Methods("POST", "OPTIONS")
+	r.Route(fmt.Sprintf("%s/auth/apiv2", s.cfg.URLPrefix),
+		func(r chi.Router) {
+			r.Use(s.ApiKeyRequired)
+
+			r.Get("/users/{username}", s.GetUser())
+			r.Post("/users", s.RegisterUserViaApi())
+			r.Post("/users/{username}/{action}", s.UpdateUser())
+		})
 
 	s.svr.Handler = r
 

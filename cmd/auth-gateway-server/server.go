@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/eghansah/auth-gateway/authlib"
 	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/csrf"
@@ -485,7 +487,7 @@ func (s *server) APILogin() http.HandlerFunc {
 		// 	}
 		// }
 
-		requestLogger.Info("Either no sid cookie was found or sid was not found in cache. Proceeding")
+		// requestLogger.Info("Either no sid cookie was found or sid was not found in cache. Proceeding")
 
 		reqMap := make(map[string]string)
 
@@ -529,9 +531,11 @@ func (s *server) APILogin() http.HandlerFunc {
 		if tx.Error != nil {
 			requestLogger.Errorf("An error occured while reading user from DB: %s", tx.Error)
 			requestLogger.Info("Treating above error as user does not exist.")
-		} else {
-			requestLogger.Info("User found. Checking for password")
+			errorJSON(w, fmt.Errorf("invalid username/password"), http.StatusNotFound)
+			return
 		}
+
+		requestLogger.Info("User found. Checking for password")
 
 		lr := authlib.LoginRequest{
 			Username: strings.ToLower(reqMap["username"]),
@@ -555,7 +559,7 @@ func (s *server) APILogin() http.HandlerFunc {
 			s.db.Create(&authenticatedUser)
 		}
 
-		if !authenticatedUser.Active {
+		if !authenticatedUser.Active || authenticatedUser.Locked {
 			requestLogger.Info("User is not active.")
 			errorJSON(w, fmt.Errorf("user is not active"), http.StatusUnauthorized)
 			return
@@ -1284,5 +1288,112 @@ func (s *server) RegisterService() http.HandlerFunc {
 		}
 
 		w.Write([]byte("Service successfully registered"))
+	}
+}
+
+func (s *server) RegisterUserViaApi() http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		reqID := middleware.GetReqID(r.Context())
+		requestLogger := s.logger.With("request-id", reqID)
+
+		newUser := authlib.User{}
+
+		// Try to decode the request body into the struct. If there is an error,
+		// try to populate struct from POST or GET params.
+		// Read the content
+		var rawReqBody []byte
+		if r.Body != nil {
+			rawReqBody, _ = io.ReadAll(r.Body)
+			r.Body.Close()
+		} // Restore the io.ReadCloser to its original state
+		r.Body = io.NopCloser(bytes.NewBuffer(rawReqBody))
+
+		err := json.Unmarshal([]byte(rawReqBody), &newUser)
+		if err != nil {
+			requestLogger.With("err", err).Error("could not parse request")
+			errorJSON(w, fmt.Errorf("could not parse request"))
+			return
+		}
+
+		newUser.SID = xid.New().String()
+		newUser.GUID = uuid.New().String()
+		newUser.Locked = false
+		newUser.Active = false
+
+		tx := s.db.Create(newUser)
+		if tx.Error != nil {
+			requestLogger.With("err", tx.Error).Error("could not register user")
+			errorJSON(w, fmt.Errorf("could not register user"))
+			return
+		}
+
+		newUser.UserMessage = "User successfully registered"
+		writeJSON(w, http.StatusOK, newUser)
+	}
+}
+
+func (s *server) UpdateUser() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		reqID := middleware.GetReqID(r.Context())
+		requestLogger := s.logger.With("request-id", reqID)
+
+		username := chi.URLParam(r, "username")
+		action := chi.URLParam(r, "action")
+
+		user := authlib.User{}
+		tx := s.db.Model(authlib.User{}).Where("username = ?", strings.ToLower(username)).First(&user)
+		if tx.Error != nil {
+			requestLogger.Errorf("An error occured while reading user from DB: %s", tx.Error)
+			requestLogger.Info("Treating above error as user does not exist.")
+			errorJSON(w, fmt.Errorf("user not found"), http.StatusNotFound)
+			return
+		}
+
+		switch action {
+		case "lock":
+			user.Locked = true
+		case "unlock":
+			user.Locked = false
+		case "disable":
+			user.Active = false
+		case "enable":
+			user.Active = true
+		}
+
+		err := s.db.Save(&user)
+		if err != nil {
+			requestLogger.With("err", err).Error("could not save update to user")
+			errorJSON(w, errors.New("could not save update to user"))
+			return
+		}
+
+		user.UserMessage = "user status updated"
+		writeJSON(w, http.StatusOK, user)
+
+	}
+}
+
+func (s *server) GetUser() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		reqID := middleware.GetReqID(r.Context())
+		requestLogger := s.logger.With("request-id", reqID)
+
+		username := chi.URLParam(r, "username")
+
+		user := authlib.User{}
+		tx := s.db.Model(authlib.User{}).Where("username = ?", strings.ToLower(username)).First(&user)
+		if tx.Error != nil {
+			requestLogger.Errorf("An error occured while reading user from DB: %s", tx.Error)
+			requestLogger.Info("Treating above error as user does not exist.")
+			errorJSON(w, fmt.Errorf("user not found"), http.StatusNotFound)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, user)
+
 	}
 }

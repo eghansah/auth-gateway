@@ -82,7 +82,8 @@ func AuthenticateAgainstLDAP() authlib.AuthenticationMethod {
 		u.Lastname = sr.Entries[0].GetAttributeValue("sn")
 
 		u.AuthenticationSystem = "ldap"
+		u.ID = user.ID
 
-		return nil, nil
+		return &u, nil
 	}
 }
