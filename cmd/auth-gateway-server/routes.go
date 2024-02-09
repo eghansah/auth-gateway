@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,6 +15,9 @@ import (
 )
 
 // var STATIC_PATH string
+type UserContextkey string
+
+const CTX_USER_KEY UserContextkey = "currentuser"
 
 func (s *server) InitRoutes() {
 
@@ -57,9 +61,6 @@ func (s *server) InitRoutes() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	r.Use(s.CSRFMiddleware)
-	// r.Use(s.createRequestIDMiddleware)
-
 	// Set a timeout value on the request context (ctx), that will signal
 	// through ctx.Done() that the request has timed out and further
 	// processing should be stopped.
@@ -71,9 +72,10 @@ func (s *server) InitRoutes() {
 	r.Handle(
 		fmt.Sprintf("%s*", STATIC_PATH),
 		http.StripPrefix(STATIC_PATH, http.FileServer(http.Dir("./html"))))
+
 	r.Route(fmt.Sprintf("%s/auth", s.cfg.URLPrefix), func(r chi.Router) {
-		//TODO: provide api authentication
-		// r.Use(s.authGateway.Middlewares.LoginRequired)
+
+		r.Use(s.CSRFMiddleware)
 
 		r.Get("/static/", func(w http.ResponseWriter, r *http.Request) {
 			http.StripPrefix(STATIC_PATH, http.FileServer(http.Dir("./html")))
@@ -101,10 +103,20 @@ func (s *server) InitRoutes() {
 	r.Route(fmt.Sprintf("%s/auth/apiv2", s.cfg.URLPrefix),
 		func(r chi.Router) {
 			r.Use(s.ApiKeyRequired)
+			// r.Use(s.LoginRequired)
 
 			r.Get("/users/{username}", s.GetUser())
 			r.Post("/users", s.RegisterUserViaApi())
 			r.Post("/users/{username}/{action}", s.UpdateUser())
+
+			r.Get("/groups/{gid}", s.GetGroup())
+			r.Get("/groups", s.Groups())
+			r.Post("/groups", s.CreateGroup())
+
+			r.Post("/permissions", s.CreatePermission())
+			r.Get("/permissions", s.GetPermissions())
+			r.Get("/permissions/{service}", s.GetPermissions())
+
 		})
 
 	s.svr.Handler = r
@@ -171,17 +183,23 @@ func (s *server) LoginRequired(h http.Handler) http.Handler {
 					requestLogger.Error("An error occured while fetching user from db: %s", tx.Error)
 				} else {
 					//User is valid. Redirect
-					h.ServeHTTP(w, r)
+
+					//create a new request context containing the authenticated user
+					ctxWithUser := context.WithValue(r.Context(), CTX_USER_KEY, user)
+
+					//create a new request using that new context
+					rWithUser := r.WithContext(ctxWithUser)
+
+					h.ServeHTTP(w, rWithUser)
+
+					// h.ServeHTTP(w, r)
 					return
 				}
 
 			}
 		}
 
-		loginurl, err := s.router.Get("login").URL()
-		if err != nil {
-			requestLogger.Errorf("URL reversal failed: %s", err)
-		}
+		loginurl := s.cfg.LoginURL
 		redirectURL := fmt.Sprintf("%s?next=%s", loginurl, r.URL.Path)
 		requestLogger.Infof("No valid user login session found. Redirecting to login screen: %s", redirectURL)
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)

@@ -303,12 +303,12 @@ func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 		userJSON := cacheEntry.Value()
 
 		// userJSON, err := s.cache.Get(ctx, cookie.Value).Result()
-		if err != nil {
-			requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
-			requestLogger.Infof("Error occured while fetching user from cache. Redirecting to login screen: %s", redirectURL)
-			writeJSON(w, http.StatusUnauthorized, resp)
-			return
-		}
+		// if err != nil {
+		// 	requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
+		// 	requestLogger.Infof("Error occured while fetching user from cache. Redirecting to login screen: %s", redirectURL)
+		// 	writeJSON(w, http.StatusUnauthorized, resp)
+		// 	return
+		// }
 
 		user := User{}
 		err = json.Unmarshal([]byte(userJSON), &user)
@@ -319,7 +319,8 @@ func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 			return
 		}
 
-		//User is valid.
+		//User is valid. Extend session expiry
+		s.cache.Set(cookie.Value, userJSON, SESSION_EXPIRY)
 
 		//create a new request context containing the authenticated user
 		ctxWithUser := context.WithValue(r.Context(), CTX_USER_KEY, user)

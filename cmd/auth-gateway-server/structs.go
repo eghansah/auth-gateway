@@ -9,26 +9,54 @@ import (
 	"gorm.io/gorm"
 )
 
-// type FunctionScreens struct {
-// 	Name       string
-// 	Parent     int
-// 	URL        string
-// 	FunctionID string
-// 	Enabled    bool
-// }
-
 type UserPermissions struct {
 	Permissions map[string]bool `json:"permissions"`
 }
 
-type Permission struct {
+type AppRole struct {
+	gorm.Model
 	Service     string `gorm:"index:idx_svc_permission,unique;size:255"`
 	Permission  string `gorm:"index:idx_svc_permission,unique;size:255"`
 	Description string
 }
 
+type GroupMaster struct {
+	gorm.Model
+	GroupID    string `gorm:"index:idx_grpmaster,unique;size:255"`
+	ModNo      int
+	Authorized bool
+}
+
+type GroupDetail struct {
+	gorm.Model
+	GroupID        string `gorm:"index:idx_gid;size:255"`
+	GroupName      string `gorm:"index:idx_gname;size:255"`
+	Active         bool
+	ModNo          int       `gorm:"index"`
+	CreatedBy      string    `gorm:"index"`
+	CreatedOn      time.Time `gorm:"index"`
+	ApprovalStatus string    `gorm:"index"`
+	ApprovedBy     string    `gorm:"index"`
+	ApprovedOn     time.Time `gorm:"index"`
+}
+
+type EnhancedGroup struct {
+	gorm.Model
+	GroupID        string
+	GroupName      string
+	Active         bool
+	ModNo          int
+	Permissions    map[string][]string
+	CreatedBy      string
+	CreatedOn      time.Time
+	ApprovalStatus string
+	ApprovedBy     string
+	ApprovedOn     time.Time
+}
+
 type UserGroup struct {
 	gorm.Model
+	ModNo  int
 	User   string `gorm:"column:username;index:idx_user_group,unique;size:255"`
 	Group  string `gorm:"column:user_group;index:idx_user_group,unique;size:255"`
 	Active bool
@@ -43,6 +71,7 @@ type UserDomain struct {
 
 type AccessControl struct {
 	gorm.Model
+	ModNo     int
 	Username  string
 	Group     string `gorm:"index:idx_access_control,unique;size:255;column:user_group"`
 	Service   string `gorm:"index:idx_access_control,unique;size:255"`
@@ -137,30 +166,14 @@ func (s *server) GetUserDomains(username string,
 }
 
 func (s *server) MigrateDB() {
+
 	s.db.AutoMigrate(authlib.User{})
 	s.db.AutoMigrate(Service{})
 	s.db.AutoMigrate(PasswordResetRequest{})
 	s.db.AutoMigrate(AccessControl{})
 	s.db.AutoMigrate(UserGroup{})
 	s.db.AutoMigrate(UserDomain{})
-	// s.db.AutoMigrate(FunctionScreens{})
-
-	// apikey, err := GenerateRandomStringURLSafe(64)
-	// if err != nil {
-	// 	log.Fatalf("Could not generate apikey: %s", err)
-	// }
-
-	// secret, err := GenerateRandomStringURLSafe(64)
-	// if err != nil {
-	// 	log.Fatalf("Could not generate secret: %s", err)
-	// }
-
-	// serviceID := xid.New().String()
-	// s.db.Create(&Service{
-	// 	ServiceID:        serviceID,
-	// 	LoginRedirectURL: "http://127.0.0.1",
-	// 	APIKey:           apikey,
-	// 	SecretKey:        secret,
-	// 	Enabled:          true,
-	// })
+	s.db.AutoMigrate(AppRole{})
+	s.db.AutoMigrate(GroupMaster{})
+	s.db.AutoMigrate(GroupDetail{})
 }

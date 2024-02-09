@@ -26,7 +26,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/csrf"
-	"github.com/gorilla/mux"
 	"github.com/lafriks/ttlcache/v3"
 	"github.com/natefinch/lumberjack"
 	"github.com/rs/xid"
@@ -68,10 +67,10 @@ type config struct {
 }
 
 type server struct {
-	db                             *gorm.DB
-	svr                            *http.Server
-	cfg                            config
-	router                         *mux.Router
+	db  *gorm.DB
+	svr *http.Server
+	cfg config
+	// router                         *mux.Router
 	cache                          *ttlcache.Cache[string, string]
 	CSRFMiddleware                 func(http.Handler) http.Handler
 	logger                         *zap.SugaredLogger
@@ -241,8 +240,11 @@ func (s *server) Init(c config) {
 	var err error
 	switch strings.TrimSpace(strings.ToLower(s.cfg.DBType)) {
 	case "mssql":
+		fallthrough
+	case "sqlserver":
 		var err error
 
+		s.logger.Info("Initiating sqlserver DB connection . . .")
 		query := url.Values{}
 		query.Add("database", s.cfg.DBName)
 		query.Add("parseTime", "True")
@@ -271,6 +273,7 @@ func (s *server) Init(c config) {
 		}
 
 	case "mysql":
+		s.logger.Info("Initiating MySQL DB connection . . .")
 		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 			s.cfg.DBUser, s.cfg.DBPassword, s.cfg.DBHost, s.cfg.DBPort, s.cfg.DBName)
 		// fmt.Println(dsn)
@@ -281,6 +284,7 @@ func (s *server) Init(c config) {
 		})
 
 	default:
+		s.logger.Info("Initiating SQlite DB connection . . .")
 		db, err = gorm.Open(sqlite.Open("mdb.db"), &gorm.Config{})
 	}
 
@@ -695,16 +699,13 @@ func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Req
 	}
 
 	requestLogger.Info("redirect user to profile page")
-	profileURL, err := s.router.Get("profile").URL()
-	if err != nil {
-		requestLogger.Errorf("Profile URL reversal failed: %s", err)
-	}
+	profileURL := fmt.Sprintf("%s%s", s.cfg.URLPrefix, PROFILE_URL)
 
 	// http.Redirect(w, r, profileURL.Path, http.StatusSeeOther)
 	ur := JSONResponse{
 		Error:       false,
 		Status:      "redirect_internal",
-		RedirectURL: profileURL.Path,
+		RedirectURL: profileURL,
 	}
 	js, _ := json.Marshal(ur)
 
@@ -1395,5 +1396,305 @@ func (s *server) GetUser() http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, user)
 
+	}
+}
+
+func (s *server) CreateGroup() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		reqID := middleware.GetReqID(r.Context())
+		// var user authlib.User = r.Context().Value(authlib.CTX_USER_KEY).(authlib.User)
+		logger := s.logger.With("request-id", reqID)
+
+		eGrp := EnhancedGroup{}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.With("err", err).
+				Error("could not read request body")
+			errorJSON(w, errors.New("could not read request body"))
+			return
+		}
+
+		err = json.Unmarshal(body, &eGrp)
+		if err != nil {
+			logger.With("err", err).
+				Error("could not parse request body")
+			errorJSON(w, errors.New("could not parse request body"))
+			return
+		}
+
+		logger.With("reqPayload", eGrp).Info("request successfully parsed")
+
+		//Check if group already exists
+		grpMaster := GroupMaster{}
+		grpTx := s.db.Model(GroupMaster{}).
+			Where("group_id = ?", eGrp.GroupID).
+			First(&grpMaster)
+
+		if grpTx.Error == nil && !grpMaster.Authorized {
+			logger.Error("cannot modify unauthorized record")
+			errorJSON(w, errors.New("cannot modify unauthorzed record"))
+			return
+		}
+
+		if grpMaster.ID != 0 {
+			//group already exists. Change to unauthorized and
+			//increase mod no
+			grpMaster.ModNo += 1
+			grpMaster.Authorized = false
+		} else {
+			grpMaster.ModNo = 1
+			grpMaster.GroupID = eGrp.GroupID
+			grpMaster.Authorized = false
+		}
+
+		tx := s.db.Begin()
+		if tx.Error != nil {
+			logger.With("err", tx.Error).
+				Error("could not initiate transaction")
+			errorJSON(w, errors.New("could not initiate transaction"))
+			return
+		}
+
+		defer tx.Rollback()
+
+		t := tx.Save(&grpMaster)
+		if t.Error != nil {
+			logger.With("err", t.Error).
+				Errorf("could not save new grpMaster record - %s", grpMaster.GroupID)
+			errorJSON(w, errors.New("could not save group"))
+			return
+		}
+
+		grpDetails := GroupDetail{
+			GroupID:   grpMaster.GroupID,
+			GroupName: eGrp.GroupName,
+			Active:    eGrp.Active,
+			ModNo:     grpMaster.ModNo,
+			CreatedBy: eGrp.CreatedBy,
+			CreatedOn: time.Now(),
+		}
+		t = tx.Save(&grpDetails)
+		if t.Error != nil {
+			logger.With("err", t.Error).
+				Errorf("could not save new grpDetails record - %s", grpMaster.GroupID)
+			errorJSON(w, errors.New("could not save group"))
+			return
+		}
+
+		//Save Group permissions
+		for service, permissions := range eGrp.Permissions {
+			for _, perm := range permissions {
+				acl := AccessControl{
+					Group:   eGrp.GroupID,
+					Service: service,
+					Role:    perm,
+					ModNo:   grpMaster.ModNo,
+				}
+
+				t := tx.Save(&acl)
+				if t.Error != nil {
+					logger.With("err", t.Error).
+						Errorf("could not save new grp permission - %s -%s", grpDetails.GroupName, perm)
+					errorJSON(w, errors.New("could not save group permission"))
+					return
+				}
+			}
+		}
+
+		t = tx.Commit()
+		if t.Error != nil {
+			logger.With("err", t.Error).
+				Error("could not commit record")
+			errorJSON(w, errors.New("could not commit record"))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, JSONResponse{Message: "Group successfully created"})
+	}
+}
+
+func (s *server) GetGroup() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		reqID := middleware.GetReqID(r.Context())
+		logger := s.logger.With("request-id", reqID)
+
+		gid := chi.URLParam(r, "gid")
+
+		grp := EnhancedGroup{}
+		tx := s.db.Model(GroupMaster{}).Where("group_id = ?", strings.ToLower(gid)).First(&grp)
+		if tx.Error != nil {
+			logger.Errorf("An error occured while reading group from DB: %s", tx.Error)
+			logger.Info("Treating above error as Group does not exist.")
+			errorJSON(w, fmt.Errorf("Group not found"), http.StatusNotFound)
+			return
+		}
+
+		tx = s.db.Model(GroupDetail{}).
+			Where("group_id = ? and mod_no = ?", grp.GroupID, grp.ModNo).
+			First(&grp)
+		if tx.Error != nil {
+			logger.Errorf("An error occured while reading group details from DB: %s", tx.Error)
+			logger.Info("Treating above error as Group does not exist.")
+			errorJSON(w, fmt.Errorf("Group not found"), http.StatusNotFound)
+			return
+		}
+
+		permissions := map[string][]string{}
+		rows, err := s.db.Model(AccessControl{}).
+			Where("group = ? and mod_no = ?", grp.GroupID, grp.ModNo).
+			Rows()
+		if err != nil {
+			logger.With("err", err).Error("could not fetch permissions")
+			errorJSON(w, errors.New("could not fetch permissions"))
+			return
+		}
+
+		for rows.Next() {
+			acl := AccessControl{}
+			err = s.db.ScanRows(rows, &acl)
+			if err != nil {
+				logger.With("err", err).Error("could not scan row")
+				errorJSON(w, errors.New("could not scan row"))
+				return
+			}
+
+			if _, ok := permissions[acl.Service]; !ok {
+				permissions[acl.Service] = make([]string, 0)
+			}
+
+			permissions[acl.Service] = append(permissions[acl.Service], acl.Role)
+		}
+
+		grp.Permissions = permissions
+		writeJSON(w, http.StatusOK, grp)
+
+	}
+}
+
+func (s *server) Groups() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		reqID := middleware.GetReqID(r.Context())
+		logger := s.logger.With("request-id", reqID)
+
+		groups := []GroupMaster{}
+
+		rows, err := s.db.Model(GroupMaster{}).Where("authorized = 1").Rows()
+		if err != nil {
+			logger.With("err", err).
+				Error("could not fetch groups")
+			errorJSON(w, errors.New("could not fetch groups"))
+			return
+		}
+
+		for rows.Next() {
+			grp := GroupMaster{}
+			err := s.db.ScanRows(rows, &grp)
+			if err != nil {
+				logger.With("err", err).Error("could not scan row")
+				continue
+			}
+
+			groups = append(groups, grp)
+		}
+
+		writeJSON(w, http.StatusOK, JSONResponse{Data: groups})
+	}
+}
+
+func (s *server) CreatePermission() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		reqID := middleware.GetReqID(r.Context())
+		logger := s.logger.With("request-id", reqID)
+
+		perm := []AppRole{}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.With("err", err).
+				Error("could not read request body")
+			errorJSON(w, errors.New("could not read request body"))
+			return
+		}
+
+		err = json.Unmarshal(body, &perm)
+		if err != nil {
+			logger.With("err", err).
+				Error("could not parse request body")
+			errorJSON(w, errors.New("could not parse request body"))
+			return
+		}
+
+		tx := s.db.Begin()
+		if tx.Error != nil {
+			logger.With("err", tx.Error).
+				Error("could not initiate transaction")
+			errorJSON(w, errors.New("could not initiate transaction"))
+			return
+		}
+
+		defer tx.Rollback()
+
+		for _, p := range perm {
+			p.Service = r.Context().Value(SERVICE_ID_CONTEXT_KEY).(string)
+			t := tx.Save(&p)
+			if t.Error != nil {
+				logger.With("err", t.Error,
+					"permission", p).
+					Errorf("could not save perimssion")
+			}
+		}
+
+		t := tx.Commit()
+		if t.Error != nil {
+			logger.With("err", t.Error).
+				Error("could not commit record")
+		}
+
+		writeJSON(w, http.StatusOK, JSONResponse{Message: "Permission successfully created"})
+	}
+}
+
+func (s *server) GetPermissions() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		reqID := middleware.GetReqID(r.Context())
+		logger := s.logger.With("request-id", reqID)
+
+		permissions := map[string][]AppRole{}
+		serviceOfInterest := chi.URLParam(r, "service")
+
+		rows, err := s.db.Model(AppRole{}).Rows()
+		if err != nil {
+			logger.With("err", err).
+				Error("could not fetch permissions")
+			errorJSON(w, errors.New("could not fetch permissions"))
+			return
+		}
+
+		for rows.Next() {
+			perm := AppRole{}
+			err := s.db.ScanRows(rows, &perm)
+			if err != nil {
+				logger.With("err", err).Error("could not scan row")
+				continue
+			}
+
+			if serviceOfInterest != "" && perm.Service != serviceOfInterest {
+				//Skip
+				continue
+			}
+
+			if _, ok := permissions[perm.Service]; !ok {
+				permissions[perm.Service] = make([]AppRole, 0)
+			}
+
+			permissions[perm.Service] = append(
+				permissions[perm.Service], perm)
+
+		}
+
+		writeJSON(w, http.StatusOK, permissions)
 	}
 }
