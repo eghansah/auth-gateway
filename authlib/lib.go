@@ -29,33 +29,38 @@ type AuthGateway struct {
 }
 
 type Middlewares struct {
-	loginPageURL string
-	serviceID    string
-	logger       *zap.SugaredLogger
-	cache        *ttlcache.Cache[string, string]
+	loginPageURL  string
+	serviceID     string
+	sessionExpiry int
+	logger        *zap.SugaredLogger
+	cache         *ttlcache.Cache[string, string]
 }
 
 type Handlers struct {
-	loginPageURL string
-	homePageURL  string
-	whoAmIURL    string
-	apikey       string
-	serviceID    string
-	CookiePath   string
-	logger       *zap.SugaredLogger
-	cache        *ttlcache.Cache[string, string]
+	loginPageURL   string
+	homePageURL    string
+	whoAmIURL      string
+	userRefreshURL string
+	apikey         string
+	serviceID      string
+	CookiePath     string
+	sessionExpiry  int
+	logger         *zap.SugaredLogger
+	cache          *ttlcache.Cache[string, string]
 }
 
 type AuthGatewayOption struct {
-	Logger      *zap.SugaredLogger
-	RedisURL    string
-	LoginURL    string
-	WhoAmIURL   string
-	HomePageURL string
-	APIKey      string
-	ServiceID   string
-	Secret      string
-	CookiePath  string
+	Logger         *zap.SugaredLogger
+	RedisURL       string
+	LoginURL       string
+	WhoAmIURL      string
+	HomePageURL    string
+	UserRefreshURL string
+	APIKey         string
+	ServiceID      string
+	Secret         string
+	CookiePath     string
+	SessionExpiry  int
 }
 
 func NewAuthGateway(o AuthGatewayOption) (*AuthGateway, error) {
@@ -96,20 +101,23 @@ func NewAuthGateway(o AuthGatewayOption) (*AuthGateway, error) {
 		logger: o.Logger,
 		cache:  rdb,
 		Middlewares: Middlewares{
-			loginPageURL: o.LoginURL,
-			cache:        rdb,
-			logger:       o.Logger,
-			serviceID:    o.ServiceID,
+			loginPageURL:  o.LoginURL,
+			cache:         rdb,
+			logger:        o.Logger,
+			serviceID:     o.ServiceID,
+			sessionExpiry: o.SessionExpiry,
 		},
 		Handlers: Handlers{
-			loginPageURL: o.LoginURL,
-			whoAmIURL:    o.WhoAmIURL,
-			homePageURL:  o.HomePageURL,
-			apikey:       o.APIKey,
-			serviceID:    o.ServiceID,
-			cache:        rdb,
-			logger:       o.Logger,
-			CookiePath:   o.CookiePath,
+			loginPageURL:   o.LoginURL,
+			whoAmIURL:      o.WhoAmIURL,
+			homePageURL:    o.HomePageURL,
+			apikey:         o.APIKey,
+			serviceID:      o.ServiceID,
+			cache:          rdb,
+			logger:         o.Logger,
+			CookiePath:     o.CookiePath,
+			sessionExpiry:  o.SessionExpiry,
+			userRefreshURL: o.UserRefreshURL,
 		}}, nil
 }
 
@@ -197,7 +205,7 @@ func (h *Handlers) SetActiveDomain(
 	user.ActiveDomain = activeDomain
 	usr, _ := json.Marshal(user)
 	// s.cache.Set(ctx, sessionID.String(), string(usr), SESSION_EXPIRY)
-	h.cache.Set(cookie.Value, string(usr), SESSION_EXPIRY)
+	h.cache.Set(cookie.Value, string(usr), time.Duration(h.sessionExpiry))
 
 	return nil
 }
@@ -320,7 +328,7 @@ func (s *Middlewares) LoginRequired(h http.Handler) http.Handler {
 		}
 
 		//User is valid. Extend session expiry
-		s.cache.Set(cookie.Value, userJSON, SESSION_EXPIRY)
+		s.cache.Set(cookie.Value, userJSON, time.Duration(s.sessionExpiry))
 
 		//create a new request context containing the authenticated user
 		ctxWithUser := context.WithValue(r.Context(), CTX_USER_KEY, user)

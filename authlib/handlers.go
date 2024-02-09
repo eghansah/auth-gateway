@@ -1,9 +1,12 @@
 package authlib
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/middleware"
@@ -101,5 +104,106 @@ func (s *Handlers) Logout() http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, resp)
 		// }
+	}
+}
+
+func (svc *Handlers) Refresh() http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		requestLogger := svc.logger.With("function name", "Refresh")
+
+		redirectURL := struct {
+			URL string
+		}{
+			URL: fmt.Sprintf("%s?service=%s&next=%s%s",
+				svc.loginPageURL,
+				svc.serviceID, os.Getenv("URL_PREFIX"), r.URL.Path),
+		}
+		resp := JSONResponse{
+			Error:   true,
+			Message: "user not logged in",
+			Data:    redirectURL,
+		}
+
+		requestLogger.Info("Check if sid (session id) cookie exists")
+		cookie, err := r.Cookie("sid")
+		if err != nil {
+			requestLogger.Errorf("Error occured while fetching sid cookie: %s", err)
+			requestLogger.Infof("sid cookie not found. Redirecting to login screen: %s", redirectURL)
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		//sid cookie exists. let's fetch user
+		requestLogger.Info("sid cookie exists. Let's fetch user")
+
+		cacheEntry, err := svc.cache.Get(cookie.Value)
+		if cacheEntry == nil {
+			requestLogger.Errorf("Error occured while fetching user json from cache: %s", err)
+			requestLogger.Infof("Error occured while fetching user from cache. Redirecting to login screen: %s", redirectURL)
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		userJSON := cacheEntry.Value()
+
+		user := User{}
+		err = json.Unmarshal([]byte(userJSON), &user)
+		if err != nil {
+			requestLogger.Errorf("Could not parse user json: %s", err)
+			requestLogger.Infof("Could not parse user JSON. Redirecting to login screen: %s", redirectURL)
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+		client := &http.Client{Transport: tr}
+		usrURL := fmt.Sprintf("%s/%s", svc.userRefreshURL, user.Username)
+
+		authgwResp, err := client.Get(usrURL)
+		if err != nil {
+			requestLogger.With("err", err).Error("could not initiate request to auth gateway")
+			resp.Message = "could not initiate request to auth gateway"
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		gwRsp, err := io.ReadAll(authgwResp.Body)
+		if err != nil {
+			requestLogger.With("err", err).Error("could not read auth gateway response")
+			resp.Message = "could not read auth gateway response"
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		err = json.Unmarshal(gwRsp, &user)
+		if err != nil {
+			requestLogger.With("err", err).Error("could not parse auth gateway response")
+			resp.Message = "could not parse auth gateway response"
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		newUserJSON, err := json.Marshal(user)
+		if err != nil {
+			requestLogger.With("err", err).Error("could not serialize auth gateway response")
+			resp.Message = "could not serialize auth gateway response"
+			writeJSON(w, http.StatusUnauthorized, resp)
+			return
+		}
+
+		//Update cache with new user roles
+		svc.cache.Set(cookie.Value, string(newUserJSON), time.Duration(svc.sessionExpiry))
+
+		resp.Error = false
+		resp.Message = "User roles refreshed"
+		resp.Data = user
+		writeJSON(w, http.StatusOK, resp)
+
 	}
 }
