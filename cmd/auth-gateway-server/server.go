@@ -1394,7 +1394,16 @@ func (s *server) GetUser() http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, user)
+		u := authlib.User{}
+		u.Firstname = user.Firstname
+		u.Lastname = user.Lastname
+		u.Email = user.Email
+		u.GUID = user.GUID
+		u.Active = user.Active
+
+		u.IAMRoles = s.GetUserPermissions(u.Email, requestLogger)
+
+		writeJSON(w, http.StatusOK, u)
 
 	}
 }
