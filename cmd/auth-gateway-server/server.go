@@ -63,6 +63,7 @@ type config struct {
 	CORSWhiteList         string        `mapstructure:"AUTH_CORS_ORIGIN_WHITELIST"`
 	SubDirectory          string        `mapstructure:"AUTH_SUBDIRECTORY"`
 	LoginURL              string        `mapstructure:"LOGIN_URL"`
+	SaveLoginSessions     bool          `mapstructure:"SAVE_LOGIN_SESSIONS"`
 	LogLevel              string
 }
 
@@ -579,8 +580,12 @@ func (s *server) APILogin() http.HandlerFunc {
 		sessionID := xid.New()
 		requestLogger = requestLogger.With("sid", sessionID)
 
-		requestLogger.Infof("Saving session id: %s => %s", sessionID.String(), fmt.Sprintf("%d", authenticatedUser.ID))
-		s.cache.Set(sessionID.String(), fmt.Sprintf("%d", authenticatedUser.ID), s.cfg.SessionDuration)
+		if s.cfg.SaveLoginSessions {
+			requestLogger.Infof("Saving session id: %s => %s", sessionID.String(), fmt.Sprintf("%d", authenticatedUser.ID))
+			s.cache.Set(sessionID.String(), fmt.Sprintf("%d", authenticatedUser.ID), s.cfg.SessionDuration)
+		} else {
+			requestLogger.Info("will not save session as SAVE_LOGIN_SESSIONS is not set to true")
+		}
 
 		c := http.Cookie{
 			Name:     "sid",
