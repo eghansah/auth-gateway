@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"database/sql"
@@ -106,7 +106,7 @@ type PasswordResetRequest struct {
 	Status    sql.NullString
 }
 
-func (s *server) GetUserGroups(username string, logger *zap.SugaredLogger) []string {
+func (s *Server) GetUserGroups(username string, logger *zap.SugaredLogger) []string {
 	groups := make([]string, 1)
 
 	// s.db.Raw("")
@@ -116,7 +116,7 @@ func (s *server) GetUserGroups(username string, logger *zap.SugaredLogger) []str
 	return groups
 }
 
-func (s *server) GetUserPermissions(username string,
+func (s *Server) GetUserPermissions(username string,
 	logger *zap.SugaredLogger) map[string]map[string]bool {
 
 	domainPermissions := make(map[string]map[string]bool)
@@ -150,7 +150,7 @@ func (s *server) GetUserPermissions(username string,
 	return domainPermissions
 }
 
-func (s *server) GetUserDomains(username string,
+func (s *Server) GetUserDomains(username string,
 	logger *zap.SugaredLogger) []string {
 
 	domains := []string{}
@@ -165,7 +165,7 @@ func (s *server) GetUserDomains(username string,
 	return domains
 }
 
-func (s *server) MigrateDB() {
+func (s *Server) MigrateDB() {
 
 	s.db.AutoMigrate(authlib.User{})
 	s.db.AutoMigrate(Service{})

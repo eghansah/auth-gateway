@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"context"
@@ -19,7 +19,7 @@ type UserContextkey string
 
 const CTX_USER_KEY UserContextkey = "currentuser"
 
-func (s *server) InitRoutes() {
+func (s *Server) InitRoutes() {
 
 	r := chi.NewRouter()
 
@@ -81,6 +81,7 @@ func (s *server) InitRoutes() {
 			http.StripPrefix(STATIC_PATH, http.FileServer(http.Dir("./html")))
 		})
 
+		r.Get("/services", s.ListServices())
 		r.Get("/service/register", s.RegisterService())
 		r.Post("/service/register", s.RegisterService())
 
@@ -130,7 +131,7 @@ func (s *server) InitRoutes() {
 	// s.svr.Handler = handlers.CORS(credentials, headers, methods, origins)(&r)
 }
 
-func (s *server) createRequestIDMiddleware(next http.Handler) http.Handler {
+func (s *Server) createRequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := r.Header.Get("x-req-id")
 		if reqID == "" {
@@ -143,7 +144,7 @@ func (s *server) createRequestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *server) LoginRequired(h http.Handler) http.Handler {
+func (s *Server) LoginRequired(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		reqID := r.Header.Get("x-req-id")

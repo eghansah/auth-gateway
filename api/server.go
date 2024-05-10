@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"bytes"
@@ -21,6 +21,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/eghansah/auth-gateway/authlib"
+	"github.com/eghansah/auth-gateway/utils"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
 
@@ -43,7 +44,7 @@ import (
 	_ "github.com/sijms/go-ora/v2"
 )
 
-type config struct {
+type Config struct {
 	Host                  string        `mapstructure:"AUTH_HOST"`
 	Port                  int           `mapstructure:"AUTH_PORT"`
 	URLPrefix             string        `mapstructure:"AUTH_URL_PREFIX"`
@@ -67,15 +68,15 @@ type config struct {
 	LogLevel              string
 }
 
-type server struct {
+type Server struct {
 	db  *gorm.DB
 	svr *http.Server
-	cfg config
+	cfg Config
 	// router                         *mux.Router
 	cache                          *ttlcache.Cache[string, string]
 	CSRFMiddleware                 func(http.Handler) http.Handler
 	logger                         *zap.SugaredLogger
-	supportedAuthenticationMethods map[string]authlib.AuthenticationMethod
+	SupportedAuthenticationMethods map[string]authlib.AuthenticationMethod
 }
 
 const STATIC_PATH = "/auth/static/"
@@ -83,12 +84,12 @@ const API_LOGIN_URL = "/auth/api/login"
 const API_WHOAMI_URL = "/auth/whoami"
 const PROFILE_URL = "/auth/profile"
 
-func (s *server) addAuthenticationMethod(authMethodCode string, authMethod authlib.AuthenticationMethod) {
-	s.supportedAuthenticationMethods[authMethodCode] = authMethod
+func (s *Server) AddAuthenticationMethod(authMethodCode string, authMethod authlib.AuthenticationMethod) {
+	s.SupportedAuthenticationMethods[authMethodCode] = authMethod
 }
 
-func (s *server) authenticateUser(logger *zap.SugaredLogger, user authlib.User, lr authlib.LoginRequest) (*authlib.User, error) {
-	authMethod, ok := s.supportedAuthenticationMethods[user.AuthenticationSystem]
+func (s *Server) authenticateUser(logger *zap.SugaredLogger, user authlib.User, lr authlib.LoginRequest) (*authlib.User, error) {
+	authMethod, ok := s.SupportedAuthenticationMethods[user.AuthenticationSystem]
 	if !ok {
 		//Auth method not supported
 		return nil, fmt.Errorf("authentication method not supported")
@@ -97,7 +98,7 @@ func (s *server) authenticateUser(logger *zap.SugaredLogger, user authlib.User, 
 	return authMethod(logger, user, lr)
 }
 
-func (s *server) sendPasswordResetEmail(r *http.Request, to *mail.Email,
+func (s *Server) sendPasswordResetEmail(r *http.Request, to *mail.Email,
 	resetReq PasswordResetRequest) (*rest.Response, error) {
 	from := mail.NewEmail("support", viper.GetString("SUPPORT_EMAIL"))
 	subject := "Password Reset"
@@ -127,7 +128,7 @@ func (s *server) sendPasswordResetEmail(r *http.Request, to *mail.Email,
 	return client.Send(message)
 }
 
-func (s *server) getUser(reqID, sessionID string) *authlib.User {
+func (s *Server) getUser(reqID, sessionID string) *authlib.User {
 
 	// pc, _, _, _ := runtime.Caller(1)
 	// details := runtime.FuncForPC(pc)
@@ -169,7 +170,7 @@ func (s *server) getUser(reqID, sessionID string) *authlib.User {
 	return &user
 }
 
-func (s *server) InitLogger() {
+func (s *Server) InitLogger() {
 	writeSyncer := s.getLogWriter()
 	syncer := zap.CombineWriteSyncers(os.Stdout, writeSyncer)
 	encoder := s.getEncoder()
@@ -179,7 +180,7 @@ func (s *server) InitLogger() {
 	s.logger = logger.Sugar()
 }
 
-func (s *server) getEncoder() zapcore.Encoder {
+func (s *Server) getEncoder() zapcore.Encoder {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	// The format time can be customized
 	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -188,7 +189,7 @@ func (s *server) getEncoder() zapcore.Encoder {
 }
 
 // Save file log cut
-func (s *server) getLogWriter() zapcore.WriteSyncer {
+func (s *Server) getLogWriter() zapcore.WriteSyncer {
 	lumberJackLogger := &lumberjack.Logger{
 		Filename:   "./logs/auth.log", // Log name
 		MaxSize:    1,                 // File content size, MB
@@ -199,7 +200,7 @@ func (s *server) getLogWriter() zapcore.WriteSyncer {
 	return zapcore.AddSync(lumberJackLogger)
 }
 
-func (s *server) Init(c config) {
+func (s *Server) Init(c Config) {
 	s.cfg = c
 	// fmt.Printf("config => %+v\n\n", s.cfg)
 
@@ -300,17 +301,17 @@ func (s *server) Init(c config) {
 
 }
 
-func (s *server) Run() {
+func (s *Server) Run() {
 	mode := "PRODUCTION"
 	if viper.GetBool("DEBUG") {
 		mode = "DEV"
 	}
-	log.Printf("Server running in %s mode at http://%s:%d/\n\n", mode, s.cfg.Host, s.cfg.Port)
-	log.Printf("\tCORS WHITELISTED ORIGINS: %v\n", strings.Split(s.cfg.CORSWhiteList, " "))
+	s.logger.Infof("Server running in %s mode at http://%s:%d/", mode, s.cfg.Host, s.cfg.Port)
+	s.logger.Infof("CORS WHITELISTED ORIGINS: %v", strings.Split(s.cfg.CORSWhiteList, " "))
 	s.svr.ListenAndServe()
 }
 
-func (s *server) Register() http.HandlerFunc {
+func (s *Server) Register() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -418,7 +419,7 @@ func (s *server) Register() http.HandlerFunc {
 	}
 }
 
-func (s *server) GetCSRFToken() http.HandlerFunc {
+func (s *Server) GetCSRFToken() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -439,7 +440,7 @@ func (s *server) GetCSRFToken() http.HandlerFunc {
 	}
 }
 
-func (s *server) APILogin() http.HandlerFunc {
+func (s *Server) APILogin() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -526,7 +527,7 @@ func (s *server) APILogin() http.HandlerFunc {
 				requestLogger.Infof("Required parameter missing: %s", r)
 
 				errMsg := fmt.Errorf("Required parameter missing: %s", r)
-				errorJSON(w, errMsg, http.StatusBadRequest)
+				utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 				return
 			}
 		}
@@ -536,7 +537,7 @@ func (s *server) APILogin() http.HandlerFunc {
 		if tx.Error != nil {
 			requestLogger.Errorf("An error occured while reading user from DB: %s", tx.Error)
 			requestLogger.Info("Treating above error as user does not exist.")
-			errorJSON(w, fmt.Errorf("invalid username/password"), http.StatusNotFound)
+			utils.ErrorJSON(w, fmt.Errorf("invalid username/password"), http.StatusNotFound)
 			return
 		}
 
@@ -551,7 +552,7 @@ func (s *server) APILogin() http.HandlerFunc {
 		if err != nil {
 			requestLogger.With("err", err).Info("authenticateUser returned an error")
 			// errMsg := fmt.Errorf("incorrect username or password")
-			errorJSON(w, err, http.StatusUnauthorized)
+			utils.ErrorJSON(w, err, http.StatusUnauthorized)
 			return
 		}
 
@@ -566,7 +567,7 @@ func (s *server) APILogin() http.HandlerFunc {
 
 		if !authenticatedUser.Active || authenticatedUser.Locked {
 			requestLogger.Info("User is not active.")
-			errorJSON(w, fmt.Errorf("user is not active"), http.StatusUnauthorized)
+			utils.ErrorJSON(w, fmt.Errorf("user is not active"), http.StatusUnauthorized)
 			return
 		}
 
@@ -613,7 +614,7 @@ func (s *server) APILogin() http.HandlerFunc {
 		requestLogger.Info("redirect user to profile page")
 
 		// http.Redirect(w, r, profileURL.Path, http.StatusSeeOther)
-		ur := JSONResponse{
+		ur := utils.JSONResponse{
 			Error:       false,
 			Message:     "Login successful",
 			RedirectURL: fmt.Sprintf("%s%s", s.cfg.URLPrefix, PROFILE_URL),
@@ -627,7 +628,7 @@ func (s *server) APILogin() http.HandlerFunc {
 	}
 }
 
-func (s *server) Login() http.HandlerFunc {
+func (s *Server) Login() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
@@ -653,7 +654,7 @@ func (s *server) Login() http.HandlerFunc {
 	}
 }
 
-func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Request, cookie *http.Cookie, u *authlib.User) {
+func (s *Server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Request, cookie *http.Cookie, u *authlib.User) {
 
 	// pc, _, _, _ := runtime.Caller(1)
 	// details := runtime.FuncForPC(pc)
@@ -671,7 +672,7 @@ func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Req
 			log.Println(tx.Error)
 			requestLogger.Errorf("Error occured while fetching service with service_id '%s': %s", qs["service"][0], tx.Error)
 
-			errorJSON(w, fmt.Errorf("Invalid App"), http.StatusNotFound)
+			utils.ErrorJSON(w, fmt.Errorf("Invalid App"), http.StatusNotFound)
 			return
 		}
 
@@ -691,7 +692,7 @@ func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Req
 			"http-status-code", http.StatusSeeOther,
 		).Info("Redirecting request")
 
-		u := JSONResponse{
+		u := utils.JSONResponse{
 			Error:       false,
 			Status:      "redirect_external",
 			RedirectURL: fmt.Sprintf("%s?tk=%s", service.LoginRedirectURL, tk),
@@ -707,7 +708,7 @@ func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Req
 	profileURL := fmt.Sprintf("%s%s", s.cfg.URLPrefix, PROFILE_URL)
 
 	// http.Redirect(w, r, profileURL.Path, http.StatusSeeOther)
-	ur := JSONResponse{
+	ur := utils.JSONResponse{
 		Error:       false,
 		Status:      "redirect_internal",
 		RedirectURL: profileURL,
@@ -719,7 +720,7 @@ func (s *server) redirectAfterSuccessfulLogin(w http.ResponseWriter, r *http.Req
 
 }
 
-func (s *server) ProfilePage() http.HandlerFunc {
+func (s *Server) ProfilePage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
@@ -737,7 +738,7 @@ func (s *server) ProfilePage() http.HandlerFunc {
 	}
 }
 
-func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
+func (s *Server) GetLoggedInUserDetails() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		// pc, _, _, _ := runtime.Caller(1)
@@ -760,7 +761,7 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 		if reqApiKey == "" {
 			//API-KEY was not provided
 			requestLogger.Info("API Key not provided")
-			errorJSON(w, fmt.Errorf("API Key not provided"), http.StatusBadRequest)
+			utils.ErrorJSON(w, fmt.Errorf("API Key not provided"), http.StatusBadRequest)
 			return
 		}
 
@@ -773,7 +774,7 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 
 			requestLogger.Infof("Could not find any active service using the API key provided")
 
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -784,7 +785,7 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 
 			requestLogger.Info("One time user auth token not provided")
 
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -795,7 +796,7 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 
 			requestLogger.Info("Could not find the specified session")
 
-			errorJSON(w, errMsg, http.StatusNotFound)
+			utils.ErrorJSON(w, errMsg, http.StatusNotFound)
 			return
 		}
 
@@ -807,7 +808,7 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 
 			requestLogger.Info("Auth token is corrupt")
 
-			errorJSON(w, errMsg, http.StatusInternalServerError)
+			utils.ErrorJSON(w, errMsg, http.StatusInternalServerError)
 			return
 		}
 
@@ -817,7 +818,7 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 
 			requestLogger.Info("Unauthorized access to session")
 
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -829,7 +830,7 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 
 			requestLogger.Info("Could not find active user with this ID")
 
-			errorJSON(w, errMsg, http.StatusNotFound)
+			utils.ErrorJSON(w, errMsg, http.StatusNotFound)
 			return
 		}
 
@@ -844,12 +845,12 @@ func (s *server) GetLoggedInUserDetails() http.HandlerFunc {
 
 		requestLogger.Info("User found => %+v", u)
 
-		writeJSON(w, http.StatusOK, u)
+		utils.WriteJSON(w, http.StatusOK, u)
 
 	}
 }
 
-func (s *server) WhoAmI() http.HandlerFunc {
+func (s *Server) WhoAmI() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -861,7 +862,7 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		}{
 			URL: s.cfg.LoginURL,
 		}
-		resp := JSONResponse{
+		resp := utils.JSONResponse{
 			Error:   true,
 			Message: "user not logged in",
 			Data:    redirectURL,
@@ -872,7 +873,7 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		if err != nil {
 			requestLogger.Info("could not fetch cookie. panic. Are you calling the right endpoint? If you're calling from an API, you're probably looking for the /api/verify_login endpoint")
 
-			writeJSON(w, http.StatusUnauthorized, resp)
+			utils.WriteJSON(w, http.StatusUnauthorized, resp)
 			return
 		}
 
@@ -881,7 +882,7 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		if usr == nil {
 			requestLogger.Info("could not fetch user. panic")
 
-			writeJSON(w, http.StatusUnauthorized, resp)
+			utils.WriteJSON(w, http.StatusUnauthorized, resp)
 			return
 		}
 
@@ -893,7 +894,7 @@ func (s *server) WhoAmI() http.HandlerFunc {
 		u.Active = usr.Active
 		u.IAMRoles = s.GetUserPermissions(u.Email, requestLogger)
 
-		jsResp := JSONResponse{
+		jsResp := utils.JSONResponse{
 			Data: u,
 		}
 
@@ -947,14 +948,14 @@ func (s *server) WhoAmI() http.HandlerFunc {
 	}
 }
 
-func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
+func (s *Server) PasswordResetRequestHandler() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		reqID := middleware.GetReqID(r.Context())
 		requestLogger := s.logger.With("request-id", reqID)
 
-		u := JSONResponse{
+		u := utils.JSONResponse{
 			Status: "ok",
 		}
 
@@ -987,7 +988,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 			requestLogger.Info("Required parameter missing: email")
 
 			errMsg := fmt.Errorf("Required parameter missing: email")
-			errorJSON(w, errMsg)
+			utils.ErrorJSON(w, errMsg)
 			return
 		}
 
@@ -996,7 +997,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 		if result := s.db.Where("active = true and email = ?", email).First(&user); result.Error != nil {
 			requestLogger.Errorf("Failing silently as no active user was found: %s", result.Error)
 			errMsg := fmt.Errorf("no active user found")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1006,7 +1007,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 			requestLogger.Errorf("UUID code generation returned an error: %s", err)
 
 			errMsg := fmt.Errorf("")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1029,7 +1030,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 			requestLogger.Errorf("Could not disable previous reset requests: %s", result.Error)
 
 			errMsg := fmt.Errorf("unexpected error")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1038,7 +1039,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 			requestLogger.Errorf("An unexpected error occured while saving password reset request to db: %s", tx.Error)
 
 			errMsg := fmt.Errorf("unexpected error")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1049,7 +1050,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 			requestLogger.Errorf("An unexpected error occured while sending email: %s", err)
 
 			errMsg := fmt.Errorf("unexpected error")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1065,7 +1066,7 @@ func (s *server) PasswordResetRequestHandler() http.HandlerFunc {
 	}
 }
 
-func (s *server) ChangePasswordHandler() http.HandlerFunc {
+func (s *Server) ChangePasswordHandler() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqID := middleware.GetReqID(r.Context())
@@ -1099,7 +1100,7 @@ func (s *server) ChangePasswordHandler() http.HandlerFunc {
 				requestLogger.Infof("Mandatory parameter not found: %s", rq)
 
 				errMsg := fmt.Errorf("required parameters missing")
-				errorJSON(w, errMsg, http.StatusBadRequest)
+				utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 				return
 			}
 		}
@@ -1112,7 +1113,7 @@ func (s *server) ChangePasswordHandler() http.HandlerFunc {
 			requestLogger.Errorf("Error occured while fetching password_reset_request from db: %s", result.Error)
 
 			errMsg := fmt.Errorf("Could not find any outstanding password reset request with the details provided")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1123,7 +1124,7 @@ func (s *server) ChangePasswordHandler() http.HandlerFunc {
 			requestLogger.Errorf("Error occured while fetching user from db: %s", result.Error)
 
 			errMsg := fmt.Errorf("Could not find any active user with outstanding password reset request using the details provided")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1135,7 +1136,7 @@ func (s *server) ChangePasswordHandler() http.HandlerFunc {
 			requestLogger.Errorf("Error occured while updating user password in db: %s", result.Error)
 
 			errMsg := fmt.Errorf("Could not update user password")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -1149,11 +1150,11 @@ func (s *server) ChangePasswordHandler() http.HandlerFunc {
 			requestLogger.Errorf("Error occured while disabling password: %s", result.Error)
 
 			errMsg := fmt.Errorf("unexpected error")
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
-		resp := JSONResponse{}
+		resp := utils.JSONResponse{}
 		resp.Status = "ok"
 		resp.Message = "Password Changed Successfully"
 		js, _ := json.Marshal(resp)
@@ -1163,7 +1164,7 @@ func (s *server) ChangePasswordHandler() http.HandlerFunc {
 	}
 }
 
-func (s *server) Logout() http.HandlerFunc {
+func (s *Server) Logout() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -1178,7 +1179,7 @@ func (s *server) Logout() http.HandlerFunc {
 			s.cache.Delete(cookie.Value)
 		}
 
-		resp := JSONResponse{}
+		resp := utils.JSONResponse{}
 		resp.Status = "ok"
 		resp.Message = "User Logged Out Successfully"
 		js, _ := json.Marshal(resp)
@@ -1188,7 +1189,7 @@ func (s *server) Logout() http.HandlerFunc {
 	}
 }
 
-func (s *server) GenerateNewSessionKeys() http.HandlerFunc {
+func (s *Server) GenerateNewSessionKeys() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		serviceID := xid.New().String()
@@ -1217,7 +1218,24 @@ func (s *server) GenerateNewSessionKeys() http.HandlerFunc {
 	}
 }
 
-func (s *server) RegisterService() http.HandlerFunc {
+func (s *Server) ListServices() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		reqID := middleware.GetReqID(r.Context())
+		requestLogger := s.logger.With("request-id", reqID, "function", "ListServices")
+
+		services := []Service{}
+		tx := s.db.Find(&services)
+		if tx.Error != nil {
+			requestLogger.Errorf("An error occured while reading service from DB: %s", tx.Error)
+			utils.ErrorJSON(w, fmt.Errorf("services could not be listed"), http.StatusNotFound)
+			return
+		}
+
+		utils.WriteJSON(w, http.StatusOK, services)
+	}
+}
+
+func (s *Server) RegisterService() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -1297,7 +1315,7 @@ func (s *server) RegisterService() http.HandlerFunc {
 	}
 }
 
-func (s *server) RegisterUserViaApi() http.HandlerFunc {
+func (s *Server) RegisterUserViaApi() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -1319,7 +1337,7 @@ func (s *server) RegisterUserViaApi() http.HandlerFunc {
 		err := json.Unmarshal([]byte(rawReqBody), &newUser)
 		if err != nil {
 			requestLogger.With("err", err).Error("could not parse request")
-			errorJSON(w, fmt.Errorf("could not parse request"))
+			utils.ErrorJSON(w, fmt.Errorf("could not parse request"))
 			return
 		}
 
@@ -1331,16 +1349,16 @@ func (s *server) RegisterUserViaApi() http.HandlerFunc {
 		tx := s.db.Create(newUser)
 		if tx.Error != nil {
 			requestLogger.With("err", tx.Error).Error("could not register user")
-			errorJSON(w, fmt.Errorf("could not register user"))
+			utils.ErrorJSON(w, fmt.Errorf("could not register user"))
 			return
 		}
 
 		newUser.UserMessage = "User successfully registered"
-		writeJSON(w, http.StatusOK, newUser)
+		utils.WriteJSON(w, http.StatusOK, newUser)
 	}
 }
 
-func (s *server) UpdateUser() http.HandlerFunc {
+func (s *Server) UpdateUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		reqID := middleware.GetReqID(r.Context())
@@ -1354,7 +1372,7 @@ func (s *server) UpdateUser() http.HandlerFunc {
 		if tx.Error != nil {
 			requestLogger.Errorf("An error occured while reading user from DB: %s", tx.Error)
 			requestLogger.Info("Treating above error as user does not exist.")
-			errorJSON(w, fmt.Errorf("user not found"), http.StatusNotFound)
+			utils.ErrorJSON(w, fmt.Errorf("user not found"), http.StatusNotFound)
 			return
 		}
 
@@ -1372,17 +1390,17 @@ func (s *server) UpdateUser() http.HandlerFunc {
 		err := s.db.Save(&user)
 		if err != nil {
 			requestLogger.With("err", err).Error("could not save update to user")
-			errorJSON(w, errors.New("could not save update to user"))
+			utils.ErrorJSON(w, errors.New("could not save update to user"))
 			return
 		}
 
 		user.UserMessage = "user status updated"
-		writeJSON(w, http.StatusOK, user)
+		utils.WriteJSON(w, http.StatusOK, user)
 
 	}
 }
 
-func (s *server) GetUser() http.HandlerFunc {
+func (s *Server) GetUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		reqID := middleware.GetReqID(r.Context())
@@ -1395,7 +1413,7 @@ func (s *server) GetUser() http.HandlerFunc {
 		if tx.Error != nil {
 			requestLogger.Errorf("An error occured while reading user from DB: %s", tx.Error)
 			requestLogger.Info("Treating above error as user does not exist.")
-			errorJSON(w, fmt.Errorf("user not found"), http.StatusNotFound)
+			utils.ErrorJSON(w, fmt.Errorf("user not found"), http.StatusNotFound)
 			return
 		}
 
@@ -1408,12 +1426,12 @@ func (s *server) GetUser() http.HandlerFunc {
 
 		u.IAMRoles = s.GetUserPermissions(u.Email, requestLogger)
 
-		writeJSON(w, http.StatusOK, u)
+		utils.WriteJSON(w, http.StatusOK, u)
 
 	}
 }
 
-func (s *server) CreateGroup() http.HandlerFunc {
+func (s *Server) CreateGroup() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		reqID := middleware.GetReqID(r.Context())
@@ -1426,7 +1444,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 		if err != nil {
 			logger.With("err", err).
 				Error("could not read request body")
-			errorJSON(w, errors.New("could not read request body"))
+			utils.ErrorJSON(w, errors.New("could not read request body"))
 			return
 		}
 
@@ -1434,7 +1452,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 		if err != nil {
 			logger.With("err", err).
 				Error("could not parse request body")
-			errorJSON(w, errors.New("could not parse request body"))
+			utils.ErrorJSON(w, errors.New("could not parse request body"))
 			return
 		}
 
@@ -1448,7 +1466,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 
 		if grpTx.Error == nil && !grpMaster.Authorized {
 			logger.Error("cannot modify unauthorized record")
-			errorJSON(w, errors.New("cannot modify unauthorzed record"))
+			utils.ErrorJSON(w, errors.New("cannot modify unauthorzed record"))
 			return
 		}
 
@@ -1467,7 +1485,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 		if tx.Error != nil {
 			logger.With("err", tx.Error).
 				Error("could not initiate transaction")
-			errorJSON(w, errors.New("could not initiate transaction"))
+			utils.ErrorJSON(w, errors.New("could not initiate transaction"))
 			return
 		}
 
@@ -1477,7 +1495,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 		if t.Error != nil {
 			logger.With("err", t.Error).
 				Errorf("could not save new grpMaster record - %s", grpMaster.GroupID)
-			errorJSON(w, errors.New("could not save group"))
+			utils.ErrorJSON(w, errors.New("could not save group"))
 			return
 		}
 
@@ -1493,7 +1511,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 		if t.Error != nil {
 			logger.With("err", t.Error).
 				Errorf("could not save new grpDetails record - %s", grpMaster.GroupID)
-			errorJSON(w, errors.New("could not save group"))
+			utils.ErrorJSON(w, errors.New("could not save group"))
 			return
 		}
 
@@ -1511,7 +1529,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 				if t.Error != nil {
 					logger.With("err", t.Error).
 						Errorf("could not save new grp permission - %s -%s", grpDetails.GroupName, perm)
-					errorJSON(w, errors.New("could not save group permission"))
+					utils.ErrorJSON(w, errors.New("could not save group permission"))
 					return
 				}
 			}
@@ -1521,15 +1539,15 @@ func (s *server) CreateGroup() http.HandlerFunc {
 		if t.Error != nil {
 			logger.With("err", t.Error).
 				Error("could not commit record")
-			errorJSON(w, errors.New("could not commit record"))
+			utils.ErrorJSON(w, errors.New("could not commit record"))
 			return
 		}
 
-		writeJSON(w, http.StatusOK, JSONResponse{Message: "Group successfully created"})
+		utils.WriteJSON(w, http.StatusOK, utils.JSONResponse{Message: "Group successfully created"})
 	}
 }
 
-func (s *server) GetGroup() http.HandlerFunc {
+func (s *Server) GetGroup() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		reqID := middleware.GetReqID(r.Context())
@@ -1542,7 +1560,7 @@ func (s *server) GetGroup() http.HandlerFunc {
 		if tx.Error != nil {
 			logger.Errorf("An error occured while reading group from DB: %s", tx.Error)
 			logger.Info("Treating above error as Group does not exist.")
-			errorJSON(w, fmt.Errorf("Group not found"), http.StatusNotFound)
+			utils.ErrorJSON(w, fmt.Errorf("Group not found"), http.StatusNotFound)
 			return
 		}
 
@@ -1552,7 +1570,7 @@ func (s *server) GetGroup() http.HandlerFunc {
 		if tx.Error != nil {
 			logger.Errorf("An error occured while reading group details from DB: %s", tx.Error)
 			logger.Info("Treating above error as Group does not exist.")
-			errorJSON(w, fmt.Errorf("Group not found"), http.StatusNotFound)
+			utils.ErrorJSON(w, fmt.Errorf("Group not found"), http.StatusNotFound)
 			return
 		}
 
@@ -1562,7 +1580,7 @@ func (s *server) GetGroup() http.HandlerFunc {
 			Rows()
 		if err != nil {
 			logger.With("err", err).Error("could not fetch permissions")
-			errorJSON(w, errors.New("could not fetch permissions"))
+			utils.ErrorJSON(w, errors.New("could not fetch permissions"))
 			return
 		}
 
@@ -1571,7 +1589,7 @@ func (s *server) GetGroup() http.HandlerFunc {
 			err = s.db.ScanRows(rows, &acl)
 			if err != nil {
 				logger.With("err", err).Error("could not scan row")
-				errorJSON(w, errors.New("could not scan row"))
+				utils.ErrorJSON(w, errors.New("could not scan row"))
 				return
 			}
 
@@ -1583,12 +1601,12 @@ func (s *server) GetGroup() http.HandlerFunc {
 		}
 
 		grp.Permissions = permissions
-		writeJSON(w, http.StatusOK, grp)
+		utils.WriteJSON(w, http.StatusOK, grp)
 
 	}
 }
 
-func (s *server) Groups() http.HandlerFunc {
+func (s *Server) Groups() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqID := middleware.GetReqID(r.Context())
 		logger := s.logger.With("request-id", reqID)
@@ -1599,7 +1617,7 @@ func (s *server) Groups() http.HandlerFunc {
 		if err != nil {
 			logger.With("err", err).
 				Error("could not fetch groups")
-			errorJSON(w, errors.New("could not fetch groups"))
+			utils.ErrorJSON(w, errors.New("could not fetch groups"))
 			return
 		}
 
@@ -1614,11 +1632,11 @@ func (s *server) Groups() http.HandlerFunc {
 			groups = append(groups, grp)
 		}
 
-		writeJSON(w, http.StatusOK, JSONResponse{Data: groups})
+		utils.WriteJSON(w, http.StatusOK, utils.JSONResponse{Data: groups})
 	}
 }
 
-func (s *server) CreatePermission() http.HandlerFunc {
+func (s *Server) CreatePermission() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqID := middleware.GetReqID(r.Context())
 		logger := s.logger.With("request-id", reqID)
@@ -1629,7 +1647,7 @@ func (s *server) CreatePermission() http.HandlerFunc {
 		if err != nil {
 			logger.With("err", err).
 				Error("could not read request body")
-			errorJSON(w, errors.New("could not read request body"))
+			utils.ErrorJSON(w, errors.New("could not read request body"))
 			return
 		}
 
@@ -1637,7 +1655,7 @@ func (s *server) CreatePermission() http.HandlerFunc {
 		if err != nil {
 			logger.With("err", err).
 				Error("could not parse request body")
-			errorJSON(w, errors.New("could not parse request body"))
+			utils.ErrorJSON(w, errors.New("could not parse request body"))
 			return
 		}
 
@@ -1645,7 +1663,7 @@ func (s *server) CreatePermission() http.HandlerFunc {
 		if tx.Error != nil {
 			logger.With("err", tx.Error).
 				Error("could not initiate transaction")
-			errorJSON(w, errors.New("could not initiate transaction"))
+			utils.ErrorJSON(w, errors.New("could not initiate transaction"))
 			return
 		}
 
@@ -1667,11 +1685,11 @@ func (s *server) CreatePermission() http.HandlerFunc {
 				Error("could not commit record")
 		}
 
-		writeJSON(w, http.StatusOK, JSONResponse{Message: "Permission successfully created"})
+		utils.WriteJSON(w, http.StatusOK, utils.JSONResponse{Message: "Permission successfully created"})
 	}
 }
 
-func (s *server) GetPermissions() http.HandlerFunc {
+func (s *Server) GetPermissions() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqID := middleware.GetReqID(r.Context())
 		logger := s.logger.With("request-id", reqID)
@@ -1683,7 +1701,7 @@ func (s *server) GetPermissions() http.HandlerFunc {
 		if err != nil {
 			logger.With("err", err).
 				Error("could not fetch permissions")
-			errorJSON(w, errors.New("could not fetch permissions"))
+			utils.ErrorJSON(w, errors.New("could not fetch permissions"))
 			return
 		}
 
@@ -1709,6 +1727,6 @@ func (s *server) GetPermissions() http.HandlerFunc {
 
 		}
 
-		writeJSON(w, http.StatusOK, permissions)
+		utils.WriteJSON(w, http.StatusOK, permissions)
 	}
 }

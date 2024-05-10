@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func (s *server) authenticateAgainstLocalDB() authlib.AuthenticationMethod {
+func (s *Server) AuthenticateAgainstLocalDB() authlib.AuthenticationMethod {
 	return func(logger *zap.SugaredLogger, user authlib.User, lr authlib.LoginRequest) (*authlib.User, error) {
 
 		if user.AuthenticationSystem != authlib.LOCAL_DB_AUTH {

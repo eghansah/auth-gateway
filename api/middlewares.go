@@ -1,10 +1,11 @@
-package main
+package api
 
 import (
 	"context"
 	"fmt"
 	"net/http"
 
+	"github.com/eghansah/auth-gateway/utils"
 	"github.com/go-chi/chi/middleware"
 )
 
@@ -12,7 +13,7 @@ type myString string
 
 const SERVICE_ID_CONTEXT_KEY myString = "thirdPartyService.ServiceID"
 
-func (svc *server) ApiKeyRequired(next http.Handler) http.Handler {
+func (svc *Server) ApiKeyRequired(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		reqID := middleware.GetReqID(r.Context())
@@ -22,7 +23,7 @@ func (svc *server) ApiKeyRequired(next http.Handler) http.Handler {
 		if reqApiKey == "" {
 			//API-KEY was not provided
 			requestLogger.Info("API Key not provided")
-			errorJSON(w, fmt.Errorf("API Key not provided"), http.StatusBadRequest)
+			utils.ErrorJSON(w, fmt.Errorf("API Key not provided"), http.StatusBadRequest)
 			return
 		}
 
@@ -35,7 +36,7 @@ func (svc *server) ApiKeyRequired(next http.Handler) http.Handler {
 
 			requestLogger.Infof("Could not find any active service using the API key provided")
 
-			errorJSON(w, errMsg, http.StatusBadRequest)
+			utils.ErrorJSON(w, errMsg, http.StatusBadRequest)
 			return
 		}
 
@@ -47,7 +48,7 @@ func (svc *server) ApiKeyRequired(next http.Handler) http.Handler {
 	})
 }
 
-// func (svc *server) LoginRequired(h http.Handler) http.Handler {
+// func (svc *Server) LoginRequired(h http.Handler) http.Handler {
 // 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 // 		// ctx := context.Background()

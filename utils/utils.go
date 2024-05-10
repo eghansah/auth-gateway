@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"crypto/rand"
@@ -63,7 +63,7 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), err
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}, headers ...http.Header) error {
+func WriteJSON(w http.ResponseWriter, status int, data interface{}, headers ...http.Header) error {
 	out, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func readJSON(w http.ResponseWriter, r *http.Request, data interface{}) error {
 	return nil
 }
 
-func errorJSON(w http.ResponseWriter, err error, status ...int) error {
+func ErrorJSON(w http.ResponseWriter, err error, status ...int) error {
 	statusCode := http.StatusBadRequest
 
 	if len(status) > 0 {
@@ -118,7 +118,7 @@ func errorJSON(w http.ResponseWriter, err error, status ...int) error {
 	payload.Message = err.Error()
 	payload.Status = "error"
 
-	return writeJSON(w, statusCode, payload)
+	return WriteJSON(w, statusCode, payload)
 }
 
 func GetMapstructureTags(o any) []string {
